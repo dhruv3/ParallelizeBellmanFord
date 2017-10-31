@@ -139,14 +139,14 @@ int main( int argc, char** argv )
 
 
 		switch(processingMethod){
-		case ProcessingType::Push:
-		    puller(&parsedGraph, bsize, bcount);
-		    break;
-		case ProcessingType::Neighbor:
-		    neighborHandler(&parsedGraph, bsize, bcount);
-		    break;
-		default:
-		    own(&parsedGraph, bsize, bcount);
+			case ProcessingType::Push:
+			    puller(&parsedGraph, bsize, bcount);
+			    break;
+			case ProcessingType::Neighbor:
+			    neighborHandler(&parsedGraph, bsize, bcount);
+			    break;
+			default:
+			    own(&parsedGraph, bsize, bcount);
 		}
 
 		/********************************

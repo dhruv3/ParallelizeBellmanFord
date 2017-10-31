@@ -24,6 +24,10 @@ struct Edge{
 
 };
 
-
+struct graph_node{
+	unsigned int weight;
+	unsigned int src;
+	unsigned int dst;
+};
 
 #endif	//	USER_SPECIFIED_STRUCTURES_H
