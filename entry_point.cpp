@@ -140,6 +140,20 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 			case ProcessingType::Push:
+				if(syncMethod == OutOfCore){
+					puller(&parsedGraph, bsize, bcount, outputFile, sortBySource);
+				} 
+				else if(syncMethod == InCore){
+					puller_incore(&parsedGraph, bsize, bcount, outputFile, sortBySource);
+				}
+				else if(smemMethod == UseSmem){
+					cout << "USE SMEM" << endl;
+					puller_usesmem(&parsedGraph, bsize, bcount, outputFile);
+				} 
+				else {
+					cout << "syncMethod not specified" << endl;
+					exit(EXIT_FAILURE);
+				}
 			    puller(&parsedGraph, bsize, bcount);
 			    break;
 			case ProcessingType::Neighbor:
