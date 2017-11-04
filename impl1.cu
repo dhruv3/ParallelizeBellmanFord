@@ -46,28 +46,31 @@ __global__ void pulling_kernel(std::vector<initial_vertex> * graph, int offset, 
 __global__ void edge_process(const edge_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
-	int thread_num = blockDim.x * gridDim.x;
-
+	int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
-	int warp_num = thread_num % 32 ? thread_num/32 + 1 : thread_num/32;
+	if(total_threads % 32 == 0){
+		int warp_num = total_threads/32;
+	}
+	else{
+		int warp_num = total_threads/32 + 1;
+	}
 	int lane_id = thread_id % 32;
-
+	
+	//given in the psuedocode
 	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
 	int beg = load * warp_id;
 	int end = min(edge_num, beg + load);
-	beg += lane_id;
+	beg = beg + lane_id;
 
-	unsigned int u;
-	unsigned int v;
-	unsigned int w;
-
+	unsigned int u, v, w;
 	for(int i = beg; i < end; i+=32){
-		u = L[i].srcIndex;
-		v = L[i].destIndex;
+		u = L[i].src;
+		v = L[i].dst;
 		w = L[i].weight;
 		if(distance_prev[u] == UINT_MAX){
 			continue;
-		} else if(distance_prev[u] + w < distance_cur[v]){
+		} 
+		else if(distance_prev[u] + w < distance_cur[v]){
 			anyChange[0] = 1;
 			atomicMin(&distance_cur[v], distance_prev[u] + w);
 		}
@@ -113,7 +116,8 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum){
 		cudaMemcpy(hostAnyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 		if(!hostAnyChange[0]){
 			break;
-		} else {
+		} 
+		else {
 			cudaMemset(anyChange, 0, (size_t)sizeof(int));
 			cudaMemcpy(hostDistanceCur, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
 			cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
@@ -128,7 +132,8 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum){
 	for(int i=0; i < graph->size(); i++){
 		if(hostDistanceCur[i] == UINT_MAX){
 		    outputFile << i << ":" << "INF" << endl;
-		}else{
+		}
+		else{
 		    outputFile << i << ":" << hostDistanceCur[i] << endl; 
 		}
 	}
