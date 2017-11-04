@@ -141,10 +141,10 @@ int main( int argc, char** argv )
 		switch(processingMethod){
 			case ProcessingType::Push:
 				if(syncMethod == OutOfCore){
-					puller(&parsedGraph, bsize, bcount, outputFile, sortBySource);
+					puller(&parsedGraph, bsize, bcount, outputFile);
 				} 
 				else if(syncMethod == InCore){
-					puller_incore(&parsedGraph, bsize, bcount, outputFile, sortBySource);
+					puller_incore(&parsedGraph, bsize, bcount, outputFile);
 				}
 				else if(smemMethod == UseSmem){
 					cout << "USE SMEM" << endl;

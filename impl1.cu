@@ -6,6 +6,8 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 
+#include <algorithm>
+
 //get total edges
 unsigned int total_edges(std::vector<initial_vertex>& graph){
 	unsigned int edge_counter = 0;
@@ -59,7 +61,7 @@ __global__ void edge_process(const edge_node *L, const unsigned int edge_num, un
 	}
 }
 
-void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum){
+void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
 	//todo
@@ -176,7 +178,7 @@ __global__ void edge_process_incore(const edge_node *L, const unsigned int edge_
 	}
 }
 
-void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile, bool sortBySource){
+void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
 
 	unsigned int *initDist, *distance; 
 	int *anyChange;
