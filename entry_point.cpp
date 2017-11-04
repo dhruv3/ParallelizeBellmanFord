@@ -148,7 +148,7 @@ int main( int argc, char** argv )
 				}
 				else if(smemMethod == UseSmem){
 					cout << "USE SMEM" << endl;
-					puller_usesmem(&parsedGraph, bsize, bcount, outputFile);
+					puller_smem(&parsedGraph, bsize, bcount, outputFile);
 				} 
 				else {
 					cout << "syncMethod not specified" << endl;

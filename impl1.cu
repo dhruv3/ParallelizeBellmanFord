@@ -19,10 +19,6 @@ int cmp_edge(const void *a, const void *b){
 	return ( (int)(((graph_node *)a)->srcIndex) - (int)(((graph_node *)b)->srcIndex));
 }
 
-void set_edges(std::vector<initial_vertex>& graph, edge_node* edge_list, unsigned int edge_counter){
-	
-}
-
 __global__ void pulling_kernel(std::vector<initial_vertex> * graph, int offset, int * anyChange){
 
     //update me based on my neighbors. Toggle anyChange as needed.
@@ -255,6 +251,149 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	cudaFree(anyChange);
 	
 	delete[] hostDistance;
+	free(initDist);
+	free(edge_list);
+}
+
+__global__ void edge_process_usesmem(const edge_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+	__shared__ int rows[1024];
+	__shared__ int vals[1024];
+
+	//rows[threadIdx.x] = FILL;
+
+	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+	int total_threads = blockDim.x * gridDim.x;
+	int warp_id = thread_id/32;
+	if(total_threads % 32 == 0){
+		int warp_num = total_threads/32;
+	}
+	else{
+		int warp_num = total_threads/32 + 1;
+	}
+	int lane_id = thread_id % 32;
+	
+	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
+	int beg = load * warp_id;
+	int end = min(edge_num, beg + load);
+	beg = beg + lane_id;
+	
+	unsigned int u, v, w;
+	unsigned int temp;
+
+	for(int i = beg; i < end; i+=32){
+		u = L[i].src;
+		v = L[i].dst;
+		w = L[i].weight;
+
+		rows[threadIdx.x] = v;
+		temp = distance_cur[v];
+		
+		if(distance_prev[u] == UINT_MAX){
+		    vals[threadIdx.x] = UINT_MAX;
+		} 
+		else {
+		    vals[threadIdx.x] = distance_prev[u] + w;
+		}
+
+		int lane = threadId % 32;
+		if (lane >= 1 && rows[threadIdx.x] == rows[threadIdx.x - 1])
+			vals[threadIdx.x] += vals[threadIdx.x - 1];
+		if (lane >= 2 && rows[threadIdx.x] == rows[threadIdx.x - 2])
+			vals[threadIdx.x] += vals[threadIdx.x - 2];
+		if (lane >= 4 && rows[threadIdx.x] == rows[threadIdx.x - 4])
+			vals[threadIdx.x] += vals[threadIdx.x - 4];
+		if (lane >= 8 && rows[threadIdx.x] == rows[threadIdx.x - 8])
+			vals[threadIdx.x] += vals[threadIdx.x - 8];
+		if (lane >= 16 && rows[threadIdx.x] == rows[threadIdx.x - 16])
+			vals[threadIdx.x] += vals[threadIdx.x - 16];
+		//write output if we are dealing with last thread in warp or rows are different
+		if ((lane == 31) || (rows[threadIdx.x] != rows[threadIdx.x + 1])){
+			atomicAdd(&distance_cur[dests[threadIdx.x]], vals[threadIdx.x]);
+		}
+
+		if(distance_cur[v] < temp)
+		    anyChange[0] = 1;
+
+		//rows[threadIdx.x] = FILL ;
+	}
+}
+
+void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
+    unsigned int *initDist, *distance_cur, *distance_prev; 
+	int *anyChange;
+	//todo
+	int *hostAnyChange = (int*)malloc(sizeof(int));
+	graph_node *edge_list, *L;
+	unsigned int edge_counter;
+	edge_counter = total_edges(*graph);
+	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+	
+	//TODO: calloc changed to malloc
+	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
+	initDist[0] = 0;
+	for(int i = 1; i < graph->size(); i++){
+	    initDist[i] = UINT_MAX; 
+	}
+	//set_edges(*graph, edge_list, edge_counter);
+	unsigned int k = 0;
+	for(int i = 0 ; i < graph.size() ; i++){
+	    for(int j = 0 ; j < graph[i].nbrs.size() ; j++, k++){
+			edge_list[k].src = graph[i].nbrs[j].srcIndex;
+			edge_list[k].dst = i;
+			edge_list[k].weight = graph[i].nbrs[j].edgeValue.weight;
+	    }
+	}		
+
+	//todo
+	unsigned int *hostDistanceCur = new unsigned int[graph->size()];
+
+	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);
+	cudaMalloc((void**)&distance_cur, (size_t)sizeof(unsigned int)*(graph->size()));
+	cudaMalloc((void**)&distance_prev, (size_t)sizeof(unsigned int)*(graph->size()));
+	cudaMalloc((void**)&anyChange, (size_t)sizeof(int));
+	
+
+	cudaMemcpy(distance_cur, initDist, (size_t)sizeof(unsigned int)*(graph->size()), cudaMemcpyHostToDevice);
+	cudaMemcpy(distance_prev, initDist, (size_t)sizeof(unsigned int)*(graph->size()), cudaMemcpyHostToDevice);
+	cudaMemcpy(L, edge_list, (size_t)sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
+	
+	cudaMemset(anyChange, 0, (size_t)sizeof(int));
+
+    setTime();
+
+	for(int i=0; i < ((int) graph->size())-1; i++){
+		edge_process_smem<<<blockNum,blockSize>>>(L, edge_num, distance_prev, distance_cur, anyChange);
+		cudaMemcpy(hostAnyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(!hostAnyChange[0]){
+			break;
+		} 
+		else {
+			cudaMemset(anyChange, 0, (size_t)sizeof(int));
+			cudaMemcpy(hostDistanceCur, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
+			cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
+			cudaMemcpy(distance_prev, hostDistanceCur,(sizeof(unsigned int))*(graph->size()), cudaMemcpyHostToDevice);
+		}
+	}
+
+	cout << "Took " << getTime() << "ms.\n";
+
+	cudaMemcpy(hostDistanceCur, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
+
+	for(int i=0; i < graph->size(); i++){
+		if(hostDistanceCur[i] == UINT_MAX){
+		    outputFile << i << ":" << "INF" << endl;
+		}
+		else{
+		    outputFile << i << ":" << hostDistanceCur[i] << endl; 
+		}
+	}
+
+	cudaFree(L);
+	cudaFree(distance_cur);
+	cudaFree(distance_prev);
+	cudaFree(anyChange);
+	
+	delete[] hostDistanceCur;
 	free(initDist);
 	free(edge_list);
 }
