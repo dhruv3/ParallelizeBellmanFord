@@ -80,11 +80,12 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	}
 	//set_edges(*graph, edge_list, edge_counter);
 	unsigned int k = 0;
-	for(int i = 0 ; i < graph.size() ; i++){
-	    for(int j = 0 ; j < graph[i].nbrs.size() ; j++, k++){
-			edge_list[k].src = graph[i].nbrs[j].srcIndex;
+	for(int i = 0 ; i < graph->size() ; i++){
+		std::vector<neighbor> nbrs = (*graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
+			edge_list[k].src = nbrs[j].srcIndex;
 			edge_list[k].dst = i;
-			edge_list[k].weight = graph[i].nbrs[j].edgeValue.weight;
+			edge_list[k].weight = nbrs[j].edgeValue.weight;
 	    }
 	}
 
@@ -201,11 +202,13 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	}
 	//set_edges(*graph, edge_list, edge_counter);
 	unsigned int k = 0;
-	for(int i = 0 ; i < graph.size() ; i++){
-	    for(int j = 0 ; j < graph[i].nbrs.size() ; j++, k++){
-			edge_list[k].src = graph[i].nbrs[j].srcIndex;
+	
+	for(int i = 0 ; i < graph->size() ; i++){
+	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
+			edge_list[k].src = nbrs[j].srcIndex;
 			edge_list[k].dst = i;
-			edge_list[k].weight = graph[i].nbrs[j].edgeValue.weight;
+			edge_list[k].weight = nbrs[j].edgeValue.weight;
 	    }
 	}
 
@@ -345,11 +348,12 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 	}
 	//set_edges(*graph, edge_list, edge_counter);
 	unsigned int k = 0;
-	for(int i = 0 ; i < graph.size() ; i++){
-	    for(int j = 0 ; j < graph[i].nbrs.size() ; j++, k++){
-			edge_list[k].src = graph[i].nbrs[j].srcIndex;
+	for(int i = 0 ; i < graph->size() ; i++){
+	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
+			edge_list[k].src = nbrs[j].srcIndex;
 			edge_list[k].dst = i;
-			edge_list[k].weight = graph[i].nbrs[j].edgeValue.weight;
+			edge_list[k].weight = nbrs[j].edgeValue.weight;
 	    }
 	}		
 
