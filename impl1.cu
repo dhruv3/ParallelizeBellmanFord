@@ -6,6 +6,8 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 
+#include <cuda_runtime_api.h>
+#include <cuda.h>
 #include <algorithm>
 
 //get total edges
@@ -18,16 +20,10 @@ unsigned int total_edges(std::vector<initial_vertex>& graph){
 }
 
 int cmp_edge(const void *a, const void *b){	
-	return ( (int)(((graph_node *)a)->srcIndex) - (int)(((graph_node *)b)->srcIndex));
+	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
 }
 
-__global__ void pulling_kernel(std::vector<initial_vertex> * graph, int offset, int * anyChange){
-
-    //update me based on my neighbors. Toggle anyChange as needed.
-    //offset will tell you who I am.
-}
-
-__global__ void edge_process(const edge_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+__global__ void edge_process(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -145,7 +141,7 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	free(edge_list);
 }
 
-__global__ void edge_process_incore(const edge_node *L, const unsigned int edge_num, unsigned int *distance, int *anyChange){
+__global__ void edge_process_incore(const graph_node *L, const unsigned int edge_num, unsigned int *distance, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -257,7 +253,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	free(edge_list);
 }
 
-__global__ void edge_process_usesmem(const edge_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+__global__ void edge_process_usesmem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
 	__shared__ int vals[1024];
 

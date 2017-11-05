@@ -47,6 +47,7 @@ int main( int argc, char** argv )
 
 		std::ifstream inputFile;
 		std::ofstream outputFile;
+		std::string outputFileName;
 		int selectedDevice = 0;
 		int bsize = 0, bcount = 0;
 		int vwsize = 32;
@@ -97,8 +98,10 @@ int main( int argc, char** argv )
 			}
 			else if( !strcmp( argv[iii], "--input" ) && iii != argc-1 /*is not the last one*/)
 				openFileToAccess< std::ifstream >( inputFile, std::string( argv[iii+1] ) );
-			else if( !strcmp( argv[iii], "--output" ) && iii != argc-1 /*is not the last one*/)
+			else if( !strcmp( argv[iii], "--output" ) && iii != argc-1 /*is not the last one*/){
 				openFileToAccess< std::ofstream >( outputFile, std::string( argv[iii+1] ) );
+				outputFileName = std::string(argv[iii+1]);
+			}
 			else if( !strcmp( argv[iii], "--bsize" ) && iii != argc-1 /*is not the last one*/)
 				bsize = std::atoi( argv[iii+1] );
 			else if( !strcmp( argv[iii], "--bcount" ) && iii != argc-1 /*is not the last one*/)
