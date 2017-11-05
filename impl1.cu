@@ -1,14 +1,16 @@
 #include <vector>
 #include <iostream>
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+#include <algorithm>
 
 #include "utils.h"
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 
-#include <cuda_runtime_api.h>
-#include <cuda.h>
-#include <algorithm>
+using namespace std;
+
 
 //get total edges
 unsigned int total_edges(std::vector<initial_vertex>& graph){
@@ -28,18 +30,21 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_num, u
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
+	int warp_num;
 	if(total_threads % 32 == 0){
-		int warp_num = total_threads/32;
+		warp_num = total_threads/32;
 	}
 	else{
-		int warp_num = total_threads/32 + 1;
+		warp_num = total_threads/32 + 1;
 	}
 	int lane_id = thread_id % 32;
 	
 	//given in the psuedocode
 	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
 	int beg = load * warp_id;
-	int end = min(edge_num, beg + load);
+	int end = beg + load;
+	if(edge_num < beg + load)
+		end = edge_num;
 	beg = beg + lane_id;
 
 	unsigned int u, v, w;
@@ -57,7 +62,7 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_num, u
 	}
 }
 
-void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
+void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
 	//todo
@@ -105,7 +110,7 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
     setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
-		edge_process<<<blockNum,blockSize>>>(L, edge_num, distance_prev, distance_cur, anyChange);
+		edge_process<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
 		cudaMemcpy(hostAnyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 		if(!hostAnyChange[0]){
 			break;
@@ -146,17 +151,20 @@ __global__ void edge_process_incore(const graph_node *L, const unsigned int edge
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
+	int warp_num;
 	if(total_threads % 32 == 0){
-		int warp_num = total_threads/32;
+		warp_num = total_threads/32;
 	}
 	else{
-		int warp_num = total_threads/32 + 1;
+		warp_num = total_threads/32 + 1;
 	}
 	int lane_id = thread_id % 32;
 	
 	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
 	int beg = load * warp_id;
-	int end = min(edge_num, beg + load);
+	int end = beg + load;
+	if(edge_num < beg + load)
+		end = edge_num;
 	beg = beg + lane_id;
 
 	unsigned int u, v, w;
@@ -174,7 +182,7 @@ __global__ void edge_process_incore(const graph_node *L, const unsigned int edge
 	}
 }
 
-void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
+void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
 
 	unsigned int *initDist, *distance; 
 	int *anyChange;
@@ -221,7 +229,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
     setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
-		edge_process_incore<<<blockNum,blockSize>>>(L, edge_num, distance, anyChange);
+		edge_process_incore<<<blockNum,blockSize>>>(L, edge_counter, distance, anyChange);
 		cudaMemcpy(hostAnyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 		if(!hostAnyChange[0]){
 			break;
@@ -231,7 +239,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 		}
 	}
 
-	cout << "Took " << getTime() << "ms.\n";
+	std::cout << "Took " << getTime() << "ms.\n";
 
 	cudaMemcpy(hostDistance, distance, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
 
@@ -253,7 +261,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	free(edge_list);
 }
 
-__global__ void edge_process_usesmem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+__global__ void edge_process_smem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
 	__shared__ int vals[1024];
 
@@ -262,17 +270,20 @@ __global__ void edge_process_usesmem(const graph_node *L, const unsigned int edg
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
+	int warp_num;
 	if(total_threads % 32 == 0){
-		int warp_num = total_threads/32;
+		warp_num = total_threads/32;
 	}
 	else{
-		int warp_num = total_threads/32 + 1;
+		warp_num = total_threads/32 + 1;
 	}
 	int lane_id = thread_id % 32;
 	
 	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
 	int beg = load * warp_id;
-	int end = min(edge_num, beg + load);
+	int end = beg + load;
+	if(edge_num < beg + load)
+		end = edge_num;
 	beg = beg + lane_id;
 	
 	unsigned int u, v, w;
@@ -306,7 +317,7 @@ __global__ void edge_process_usesmem(const graph_node *L, const unsigned int edg
 			vals[threadIdx.x] += vals[threadIdx.x - 16];
 		//write output if we are dealing with last thread in warp or rows are different
 		if ((lane == 31) || (rows[threadIdx.x] != rows[threadIdx.x + 1])){
-			atomicAdd(&distance_cur[dests[threadIdx.x]], vals[threadIdx.x]);
+			atomicAdd(&distance_cur[rows[threadIdx.x]], vals[threadIdx.x]);
 		}
 
 		if(distance_cur[v] < temp)
@@ -316,7 +327,7 @@ __global__ void edge_process_usesmem(const graph_node *L, const unsigned int edg
 	}
 }
 
-void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream& outputFile){
+void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
 	//todo
@@ -360,7 +371,7 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
     setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
-		edge_process_smem<<<blockNum,blockSize>>>(L, edge_num, distance_prev, distance_cur, anyChange);
+		edge_process_smem<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
 		cudaMemcpy(hostAnyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 		if(!hostAnyChange[0]){
 			break;
@@ -373,7 +384,7 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 		}
 	}
 
-	cout << "Took " << getTime() << "ms.\n";
+	std::cout << "Took " << getTime() << "ms.\n";
 
 	cudaMemcpy(hostDistanceCur, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
 

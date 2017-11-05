@@ -14,6 +14,7 @@
 #include "impl2.cu"
 #include "impl1.cu"
 
+
 enum class ProcessingType {Push, Neighbor, Own, Unknown};
 enum SyncMode {InCore, OutOfCore};
 enum SyncMode syncMethod;
@@ -157,7 +158,6 @@ int main( int argc, char** argv )
 					cout << "syncMethod not specified" << endl;
 					exit(EXIT_FAILURE);
 				}
-			    puller(&parsedGraph, bsize, bcount);
 			    break;
 			case ProcessingType::Neighbor:
 			    neighborHandler(&parsedGraph, bsize, bcount);
