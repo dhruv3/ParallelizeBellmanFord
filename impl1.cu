@@ -307,7 +307,7 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_n
 		    vals[threadIdx.x] = distance_prev[u] + w;
 		}
 
-		int lane = threadId % 32;
+		int lane = thread_id % 32;
 		if (lane >= 1 && rows[threadIdx.x] == rows[threadIdx.x - 1])
 			vals[threadIdx.x] += vals[threadIdx.x - 1];
 		if (lane >= 2 && rows[threadIdx.x] == rows[threadIdx.x - 2])
