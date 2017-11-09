@@ -160,6 +160,16 @@ int main( int argc, char** argv )
 				}
 			    break;
 			case ProcessingType::Neighbor:
+				if(syncMethod == OutOfCore){
+					puller_impl2(&parsedGraph, bsize, bcount, outputFile);
+				} 
+				else if(syncMethod == InCore){
+					puller_incore_impl2(&parsedGraph, bsize, bcount, outputFile);
+				}
+				else {
+					cout << "syncMethod not specified" << endl;
+					exit(EXIT_FAILURE);
+				}
 			    neighborHandler(&parsedGraph, bsize, bcount);
 			    break;
 			default:

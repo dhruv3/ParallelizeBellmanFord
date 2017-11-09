@@ -25,6 +25,8 @@ int cmp_edge(const void *a, const void *b){
 	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
 }
 
+//outcore
+//kernel outcore method
 __global__ void edge_process(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
@@ -62,6 +64,7 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_num, u
 	}
 }
 
+//outcore device method
 void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
@@ -72,13 +75,14 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	edge_counter = total_edges(*graph);
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	
-	//TODO: calloc changed to malloc
+	//set initial distance to max except for source node
 	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
 	initDist[0] = 0;
 	for(int i = 1; i < graph->size(); i++){
 	    initDist[i] = UINT_MAX; 
 	}
-	//set_edges(*graph, edge_list, edge_counter);
+	
+	//for each member of edge list set initial values
 	unsigned int k = 0;
 	for(int i = 0 ; i < graph->size() ; i++){
 		std::vector<neighbor> nbrs = (*graph)[i].nbrs;
@@ -147,6 +151,8 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	free(edge_list);
 }
 
+//incore
+//incore kernel method
 __global__ void edge_process_incore(const graph_node *L, const unsigned int edge_num, unsigned int *distance, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
@@ -183,6 +189,7 @@ __global__ void edge_process_incore(const graph_node *L, const unsigned int edge
 	}
 }
 
+//incore device method
 void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
 
 	unsigned int *initDist, *distance; 
@@ -194,7 +201,6 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	edge_counter = total_edges(*graph);
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	
-	//TODO: calloc changed to malloc
 	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
 	initDist[0] = 0;
 	for(int i = 1; i < graph->size(); i++){
@@ -264,6 +270,9 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	free(edge_list);
 }
 
+
+//using shared memory
+//smem kernel method
 __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
 	__shared__ int vals[1024];
@@ -330,6 +339,7 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_n
 	}
 }
 
+////smem device method
 void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
@@ -340,7 +350,6 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 	edge_counter = total_edges(*graph);
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	
-	//TODO: calloc changed to malloc
 	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
 	initDist[0] = 0;
 	for(int i = 1; i < graph->size(); i++){
