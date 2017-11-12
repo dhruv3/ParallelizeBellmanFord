@@ -28,7 +28,7 @@ int cmp_edge(const void *a, const void *b){
 
 //outcore
 //kernel outcore method
-__global__ void edge_process(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+__global__ void edge_process(const graph_node *L, const unsigned int edge_counter, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -43,11 +43,11 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_num, u
 	int lane_id = thread_id % 32;
 	
 	//given in the psuedocode
-	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
+	int load = (edge_counter % warp_num == 0) ? edge_counter/warp_num : edge_counter/warp_num+1;
 	int beg = load * warp_id;
 	int end = beg + load;
-	if(edge_num < beg + load)
-		end = edge_num;
+	if(edge_counter < beg + load)
+		end = edge_counter;
 	beg = beg + lane_id;
 
 	unsigned int u, v, w;
@@ -149,7 +149,7 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 
 //incore
 //incore kernel method
-__global__ void edge_process_incore(const graph_node *L, const unsigned int edge_num, unsigned int *distance, int *anyChange){
+__global__ void edge_process_incore(const graph_node *L, const unsigned int edge_counter, unsigned int *distance, int *anyChange){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -163,11 +163,11 @@ __global__ void edge_process_incore(const graph_node *L, const unsigned int edge
 	}
 	int lane_id = thread_id % 32;
 	
-	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
+	int load = (edge_counter % warp_num == 0) ? edge_counter/warp_num : edge_counter/warp_num+1;
 	int beg = load * warp_id;
 	int end = beg + load;
-	if(edge_num < beg + load)
-		end = edge_num;
+	if(edge_counter < beg + load)
+		end = edge_counter;
 	beg = beg + lane_id;
 
 	unsigned int u, v, w;
@@ -263,7 +263,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 //using shared memory
 //smem kernel method
-__global__ void edge_process_smem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
+__global__ void edge_process_smem(const graph_node *L, const unsigned int edge_counter, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
 	__shared__ int vals[1024];
 
@@ -279,11 +279,11 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_n
 	}
 	int lane_id = thread_id % 32;
 	
-	int load = (edge_num % warp_num == 0) ? edge_num/warp_num : edge_num/warp_num+1;
+	int load = (edge_counter % warp_num == 0) ? edge_counter/warp_num : edge_counter/warp_num+1;
 	int beg = load * warp_id;
 	int end = beg + load;
-	if(edge_num < beg + load)
-		end = edge_num;
+	if(edge_counter < beg + load)
+		end = edge_counter;
 	beg = beg + lane_id;
 	
 	unsigned int u, v, w;
