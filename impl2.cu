@@ -1,14 +1,80 @@
 #include <vector>
 #include <iostream>
-
+#include <thrust/scan.h>
 #include "utils.h"
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 
-void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
-	
+__global__ void set_wrap_count(const edge_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds){
+    
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int total_threads = blockDim.x * gridDim.x;
+	int warp_id = thread_id/32;
+	int warp_num;
+	if(total_threads % 32 == 0){
+		warp_num = total_threads/32;
+	}
+	else{
+		warp_num = total_threads/32 + 1;
+	}
+	int lane_id = thread_id % 32;
+
+    //given in the psuedocode
+	int load = (edge_counter % warp_num == 0) ? edge_counter/warp_num : edge_counter/warp_num+1;
+	int beg = load * warp_id;
+	int end = beg + load;
+	if(edge_counter < beg + load)
+		end = edge_counter;
+	beg = beg + lane_id;
+
+    unsigned int temp_num = 0;
+    for(int i = beg; i < end; i+=32){
+		int mask = __ballot(flag[L[i].srcIndex]);
+		if(lane_id == 0){
+		    temp_num += (unsigned int) __popc(mask);
+		}
+    }
+
+    if(lane_id == 0){
+		warp_update_ds[warp_id] = temp_num;
+    }
 }
+
+__global__ void filter_T(const edge_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds, edge_node *T){
+    int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int total_threads = blockDim.x * gridDim.x;
+	int warp_id = thread_id/32;
+	int warp_num;
+	if(total_threads % 32 == 0){
+		warp_num = total_threads/32;
+	}
+	else{
+		warp_num = total_threads/32 + 1;
+	}
+	int lane_id = thread_id % 32;
+
+    //given in the psuedocode
+	int load = (edge_counter % warp_num == 0) ? edge_counter/warp_num : edge_counter/warp_num+1;
+	int beg = load * warp_id;
+	int end = beg + load;
+	if(edge_counter < beg + load)
+		end = edge_counter;
+	beg = beg + lane_id;
+
+	int cur_offset = warp_update_ds[warp_id];
+    
+    for(int i = beg; i < end; i+=32){
+		int mask = __ballot(warp_update_ds[L[i].srcIndex]);
+		int inner_idx = __popc(mask << (32 - 1) - lane_id) - 1;
+		if(warp_update_ds[L[i].srcIndex]){
+		    T[cur_offset+inner_idx]= L[i];
+		}
+		cur_offset += __popc(mask);
+    }
+
+}
+
 
 //outcore
 //kernel outcore method
@@ -94,7 +160,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
 
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
-	unsigned int *hostTPA = new unsigned int[warp_num];
+	unsigned int *device_warp_update_ds = new unsigned int[warp_num];
 
 	cudaMalloc((void**)&warp_update_ds, (size_t)sizeof(unsigned int) * warp_num);
 	cudaMalloc((void**)&flag, (size_t)sizeof(unsigned int) * (graph->size()));
@@ -144,9 +210,9 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		    cudaDeviceSynchronize();
 		    cudaMemcpy(temp, warp_update_ds + warp_num - 1, sizeof(unsigned int), cudaMemcpyDeviceToHost);
 		    to_process_num = *temp;
-		    cudaMemcpy(hostTPA, warp_update_ds, sizeof(unsigned int)*warp_num, cudaMemcpyDeviceToHost);
-		    thrust::exclusive_scan(hostTPA, hostTPA + warp_num, hostTPA);
-		    cudaMemcpy(warp_update_ds, hostTPA, sizeof(unsigned int)*warp_num, cudaMemcpyHostToDevice);
+		    cudaMemcpy(device_warp_update_ds, warp_update_ds, sizeof(unsigned int)*warp_num, cudaMemcpyDeviceToHost);
+		    thrust::exclusive_scan(device_warp_update_ds, device_warp_update_ds + warp_num, device_warp_update_ds);
+		    cudaMemcpy(warp_update_ds, device_warp_update_ds, sizeof(unsigned int)*warp_num, cudaMemcpyHostToDevice);
 		    cudaMemcpy(temp, warp_update_ds + warp_num - 1, sizeof(unsigned int), cudaMemcpyDeviceToHost);
 		    to_process_num += *temp;
 		    cudaMalloc((void**)&T, (size_t)sizeof(edge_node)*to_process_num);
@@ -174,8 +240,14 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaFree(distance_prev);
 	cudaFree(anyChange);
 
-	delete[] hostTPA;
+	delete[] device_warp_update_ds;
 	delete[] swapDistVariable;
 	free(initDist);
 	free(edge_list);
+}
+
+
+
+void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
+	
 }
