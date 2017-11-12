@@ -94,7 +94,6 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
 
-	//todo
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
 
 	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);
@@ -176,8 +175,8 @@ __global__ void edge_process_incore(const graph_node *L, const unsigned int edge
 		u = L[i].src;
 		v = L[i].dst;
 		w = L[i].weight;
-		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_cur[v]){
-			atomicMin(&distance_cur[v], distance_prev[u] + w);
+		if(distance[u] != UINT_MAX && distance[u] + w < distance[v]){
+			atomicMin(&distance[v], distance[u] + w);
 			anyChange[0] = 1;
 		}
 	}
@@ -188,7 +187,6 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 	unsigned int *initDist, *distance; 
 	int *anyChange;
-	//todo
 	int *checkIfChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
@@ -200,9 +198,8 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	for(int i = 1; i < graph->size(); i++){
 	    initDist[i] = UINT_MAX; 
 	}
-	//set_edges(*graph, edge_list, edge_counter);
-	unsigned int k = 0;
-	
+
+	unsigned int k = 0;	
 	for(int i = 0 ; i < graph->size() ; i++){
 	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
 	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
@@ -216,7 +213,6 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
 
-	//todo
 	unsigned int *hostDistance = (unsigned int *)malloc((sizeof(unsigned int))*(graph->size()));
 
 	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);
@@ -270,8 +266,6 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_num, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
 	__shared__ int vals[1024];
-
-	//rows[threadIdx.x] = FILL;
 
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -329,7 +323,6 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_n
 		if(distance_cur[v] < temp)
 		    anyChange[0] = 1;
 
-		//rows[threadIdx.x] = FILL ;
 	}
 }
 
@@ -337,7 +330,6 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_n
 void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
     unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
-	//todo
 	int *checkIfChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
@@ -349,7 +341,7 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 	for(int i = 1; i < graph->size(); i++){
 	    initDist[i] = UINT_MAX; 
 	}
-	//set_edges(*graph, edge_list, edge_counter);
+
 	unsigned int k = 0;
 	for(int i = 0 ; i < graph->size() ; i++){
 	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
@@ -360,7 +352,6 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 	    }
 	}		
 
-	//todo
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
 
 	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);

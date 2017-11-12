@@ -78,9 +78,9 @@ int main( int argc, char** argv )
 			}
 			else if ( !strcmp(argv[iii], "--sync") && iii != argc-1 ) {
 				if ( !strcmp(argv[iii+1], "incore") )
-				        syncMethod = InCore;
+				        syncMethod = InCore;				
 				if ( !strcmp(argv[iii+1], "outcore") )
-    				        syncMethod = OutOfCore;
+    				        syncMethod = OutOfCore;				
 				else{
            std::cerr << "\n Un-recognized sync parameter value \n\n";
            exit;
@@ -161,7 +161,7 @@ int main( int argc, char** argv )
 			    break;
 			case ProcessingType::Neighbor:
 				if(syncMethod == OutOfCore){
-					puller_impl2(&parsedGraph, bsize, bcount, outputFile);
+					puller_outcore_impl2(&parsedGraph, bsize, bcount, outputFile);
 				} 
 				else if(syncMethod == InCore){
 					puller_incore_impl2(&parsedGraph, bsize, bcount, outputFile);
@@ -170,7 +170,6 @@ int main( int argc, char** argv )
 					cout << "syncMethod not specified" << endl;
 					exit(EXIT_FAILURE);
 				}
-			    neighborHandler(&parsedGraph, bsize, bcount);
 			    break;
 			default:
 			    own(&parsedGraph, bsize, bcount);
