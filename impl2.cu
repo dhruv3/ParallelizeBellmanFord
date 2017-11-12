@@ -6,7 +6,23 @@
 #include "initial_graph.hpp"
 #include "parse_graph.hpp"
 
-__global__ void set_wrap_count(const edge_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds){
+using namespace std;
+
+//comparator function used by qsort
+int cmp_edge1(const void *a, const void *b){	
+	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
+}
+
+//get total edges
+unsigned int total_edges_impl2(std::vector<initial_vertex>& graph){
+	unsigned int edge_counter = 0;
+	for(int i = 0 ; i < graph.size() ; i++){
+	    edge_counter += graph[i].nbrs.size();
+	}
+	return edge_counter;
+}
+
+__global__ void set_wrap_count(const graph_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds){
     
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int total_threads = blockDim.x * gridDim.x;
@@ -30,7 +46,7 @@ __global__ void set_wrap_count(const edge_node *L, const unsigned int edge_count
 
     unsigned int temp_num = 0;
     for(int i = beg; i < end; i+=32){
-		int mask = __ballot(flag[L[i].srcIndex]);
+		int mask = __ballot(flag[L[i].src]);
 		if(lane_id == 0){
 		    temp_num += (unsigned int) __popc(mask);
 		}
@@ -41,7 +57,7 @@ __global__ void set_wrap_count(const edge_node *L, const unsigned int edge_count
     }
 }
 
-__global__ void filter_T(const edge_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds, edge_node *T){
+__global__ void filter_T(const graph_node *L, const unsigned int edge_counter, unsigned int *flag, unsigned int *warp_update_ds, graph_node *T){
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
@@ -65,9 +81,9 @@ __global__ void filter_T(const edge_node *L, const unsigned int edge_counter, un
 	int cur_offset = warp_update_ds[warp_id];
     
     for(int i = beg; i < end; i+=32){
-		int mask = __ballot(warp_update_ds[L[i].srcIndex]);
+		int mask = __ballot(warp_update_ds[L[i].src]);
 		int inner_idx = __popc(mask << (32 - 1) - lane_id) - 1;
-		if(warp_update_ds[L[i].srcIndex]){
+		if(warp_update_ds[L[i].src]){
 		    T[cur_offset+inner_idx]= L[i];
 		}
 		cur_offset += __popc(mask);
@@ -123,7 +139,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	int *checkIfChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L, *T;
 	unsigned int edge_counter, to_process_num;
-	edge_counter = total_edges(*graph);
+	edge_counter = total_edges_impl2(*graph);
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	
 	unsigned int *temp = (unsigned int*)malloc(sizeof(unsigned int));
@@ -157,7 +173,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 
 	//sort by source vertex
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
-	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
+	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge1);			
 
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
 	unsigned int *device_warp_update_ds = new unsigned int[warp_num];
@@ -215,7 +231,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		    cudaMemcpy(warp_update_ds, device_warp_update_ds, sizeof(unsigned int)*warp_num, cudaMemcpyHostToDevice);
 		    cudaMemcpy(temp, warp_update_ds + warp_num - 1, sizeof(unsigned int), cudaMemcpyDeviceToHost);
 		    to_process_num += *temp;
-		    cudaMalloc((void**)&T, (size_t)sizeof(edge_node)*to_process_num);
+		    cudaMalloc((void**)&T, (size_t)sizeof(graph_node)*to_process_num);
 		    filter_T<<<blockNum, blockSize>>>(L, edge_counter, flag, warp_update_ds, T);
 		    cudaDeviceSynchronize();
 		    filter_time += getTime();
@@ -244,10 +260,4 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	delete[] swapDistVariable;
 	free(initDist);
 	free(edge_list);
-}
-
-
-
-void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
-	
 }
