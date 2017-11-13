@@ -81,9 +81,9 @@ __global__ void filter_T(const graph_node *L, const unsigned int edge_counter, u
 	int cur_offset = warp_update_ds[warp_id];
     
     for(int i = beg; i < end; i+=32){
-		int mask = __ballot(warp_update_ds[L[i].src]);
+		int mask = __ballot(flag[L[i].src]);
 		int inner_idx = __popc(mask << (32 - 1) - lane_id) - 1;
-		if(warp_update_ds[L[i].src]){
+		if(flag[L[i].src]){
 		    T[cur_offset+inner_idx]= L[i];
 		}
 		cur_offset += __popc(mask);
@@ -178,8 +178,8 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
 	unsigned int *device_warp_update_ds = new unsigned int[warp_num];
 
-	cudaMalloc((void**)&warp_update_ds, (size_t)sizeof(unsigned int) * warp_num);
-	cudaMalloc((void**)&flag, (size_t)sizeof(unsigned int) * (graph->size()));
+	cudaMalloc((void**)&warp_update_ds, (size_t)sizeof(unsigned int)*warp_num);
+	cudaMalloc((void**)&flag, (size_t)sizeof(unsigned int)*(graph->size()));
 	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);
 	cudaMalloc((void**)&distance_cur, (size_t)sizeof(unsigned int)*(graph->size()));
 	cudaMalloc((void**)&distance_prev, (size_t)sizeof(unsigned int)*(graph->size()));
@@ -403,7 +403,7 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 
 	printf("Computation Time: %f ms\nFiltering Time: %f ms\n", compute_time, filter_time);
 
-	cudaMemcpy(swapDistVariable, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
+	cudaMemcpy(swapDistVariable, distance, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
 	for(int i=0; i < graph->size(); i++){
 		if(swapDistVariable[i] == UINT_MAX){
 		    outputFile << i << ":" << "INF" << endl;
