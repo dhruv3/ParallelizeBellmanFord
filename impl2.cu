@@ -264,7 +264,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 
 //incore
 //kernel incore method
-_global__ void edge_process_incore(const graph_node *L, const unsigned int edge_counter, unsigned int *distance, int *anyChange, unsigned int *flag){
+__global__ void edge_process_incore(const graph_node *L, const unsigned int edge_counter, unsigned int *distance, int *anyChange, unsigned int *flag){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -291,8 +291,8 @@ _global__ void edge_process_incore(const graph_node *L, const unsigned int edge_
 		u = L[i].src;
 		v = L[i].dst;
 		w = L[i].weight;
-		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_cur[v]){
-			atomicMin(&distance_cur[v], distance_prev[u] + w);
+		if(distance[u] != UINT_MAX && distance[u] + w < distance[v]){
+			atomicMin(&distance[v], distance[u] + w);
 			anyChange[0] = 1;
 			flag[v] = 1;
 		}
