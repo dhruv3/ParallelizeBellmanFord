@@ -64,9 +64,9 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_counte
 
 //outcore device method
 void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
-    unsigned int *initDist, *distance_cur, *distance_prev; 
+   unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
-	int *checkIfChange = (int*)malloc(sizeof(int));
+	int *device_anyChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -108,12 +108,12 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 	
 	cudaMemset(anyChange, 0, (size_t)sizeof(int));
 
-    setTime();
+   setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
-		cudaMemcpy(checkIfChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!checkIfChange[0]){
+		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(!device_anyChange[0]){
 			break;
 		} 
 		else {
@@ -187,7 +187,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 	unsigned int *initDist, *distance; 
 	int *anyChange;
-	int *checkIfChange = (int*)malloc(sizeof(int));
+	int *device_anyChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -198,8 +198,8 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	for(int i = 1; i < graph->size(); i++){
 	    initDist[i] = UINT_MAX; 
 	}
-
-	unsigned int k = 0;	
+	//set_edges(*graph, edge_list, edge_counter);
+	unsigned int k = 0;
 	for(int i = 0 ; i < graph->size() ; i++){
 	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
 	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
@@ -211,7 +211,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 	//sort by source vertex
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
-	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
+	//qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);			
 
 	unsigned int *hostDistance = (unsigned int *)malloc((sizeof(unsigned int))*(graph->size()));
 
@@ -225,12 +225,12 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 	
 	cudaMemset(anyChange, 0, (size_t)sizeof(int));
 
-    setTime();
+   setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process_incore<<<blockNum,blockSize>>>(L, edge_counter, distance, anyChange);
-		cudaMemcpy(checkIfChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!checkIfChange[0]){
+		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(!device_anyChange[0]){
 			break;
 		} 
 		else {
@@ -322,15 +322,14 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_c
 
 		if(distance_cur[v] < temp)
 		    anyChange[0] = 1;
-
 	}
 }
 
 ////smem device method
 void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
-    unsigned int *initDist, *distance_cur, *distance_prev; 
+   unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
-	int *checkIfChange = (int*)malloc(sizeof(int));
+	int *device_anyChange = (int*)malloc(sizeof(int));
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -351,7 +350,7 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 			edge_list[k].weight = nbrs[j].edgeValue.weight;
 	    }
 	}		
-
+	//qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge);		
 	unsigned int *swapDistVariable = new unsigned int[graph->size()];
 
 	cudaMalloc((void**)&L, (size_t)sizeof(graph_node)*edge_counter);
@@ -366,12 +365,12 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 	
 	cudaMemset(anyChange, 0, (size_t)sizeof(int));
 
-    setTime();
+   setTime();
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process_smem<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
-		cudaMemcpy(checkIfChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!checkIfChange[0]){
+		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(!device_anyChange[0]){
 			break;
 		} 
 		else {
