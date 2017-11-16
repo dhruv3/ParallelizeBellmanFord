@@ -206,8 +206,21 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaMalloc((void**)&d_change, sizeof(uint)*graph->size());
 	cudaMalloc((void**)&d_warp_count, sizeof(uint)*count_warps);
 	cudaMalloc((void**)&d_is_changed, sizeof(int));
+	
+	graph_node *edge_list;
+	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+	//for each member of edge list set initial values
+	unsigned int k = 0;
+	for(int i = 0 ; i < graph->size() ; i++){
+		std::vector<neighbor> nbrs = (*graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
+			edge_list[k].src = nbrs[j].srcIndex;
+			edge_list[k].dst = i;
+			edge_list[k].weight = nbrs[j].edgeValue.weight;
+	    }
+	}
 
-	cudaMemcpy(d_edges, graph, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_edges, edge_list, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_nEdges, &edge_counter, sizeof(uint), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_distances_curr, initDist, sizeof(uint)*graph->size(), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_distances_prev, initDist, sizeof(uint)*graph->size(), cudaMemcpyHostToDevice);
