@@ -171,9 +171,8 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 
 	graph_node *edge_list, *L;
 	
-	uint* d_edge_idx;
-
-	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter;
+	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
+	
 	int *anyChange;
 	int check_if_change;
 
@@ -190,8 +189,13 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	    }
 	}
 
-	uint count_to_process = edge_counter;
-	uint* h_edge_idx = new uint[edge_counter];
+	unsigned int initial_edge_counter = edge_counter;
+
+	//todo h_edge_idx
+	unsigned int *h_edge_idx = new unsigned int[edge_counter];
+	for (int i = 0; i < edge_counter; ++i) {
+		h_edge_idx[i] = i;
+	}
 
 	int total_threads = blockSize * blockNum;
 	int warp_num;
@@ -210,27 +214,23 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	    initDist[i] = UINT_MAX; 
 	}
 
+	
+	cudaMalloc((void**)&edge_offset_ds, sizeof(unsigned int)*edge_counter);
+	cudaMalloc((void**)&device_edge_counter, sizeof(unsigned int));
+	cudaMalloc((void**)&temp_distance, sizeof(unsigned int)*graph->size());	
+
+	cudaMalloc((void**)&device_warp_update_ds, sizeof(unsigned int)*warp_num);
+	cudaMalloc((void**)&flag, sizeof(unsigned int)*graph->size());
 	cudaMalloc((void**)&L, sizeof(graph_node)*edge_counter);
-	cudaMalloc((void**)&d_edge_idx, sizeof(uint)*edge_counter);
-	cudaMalloc((void**)&device_edge_counter, sizeof(uint));
-	cudaMalloc((void**)&distance_cur, sizeof(uint)*graph->size());
-	cudaMalloc((void**)&distance_prev, sizeof(uint)*graph->size());
-	cudaMalloc((void**)&temp_distance, sizeof(uint)*graph->size());
-	cudaMalloc((void**)&flag, sizeof(uint)*graph->size());
-	cudaMalloc((void**)&device_warp_update_ds, sizeof(uint)*warp_num);
+	cudaMalloc((void**)&distance_cur, sizeof(unsigned int)*graph->size());
+	cudaMalloc((void**)&distance_prev, sizeof(unsigned int)*graph->size());
 	cudaMalloc((void**)&anyChange, sizeof(int));
 	
-	
+	cudaMemcpy(distance_cur, initDist, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
+	cudaMemcpy(distance_prev, initDist, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
 	cudaMemcpy(L, edge_list, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 	cudaMemcpy(device_edge_counter, &edge_counter, sizeof(uint), cudaMemcpyHostToDevice);
-	cudaMemcpy(distance_cur, initDist, sizeof(uint)*graph->size(), cudaMemcpyHostToDevice);
-	cudaMemcpy(distance_prev, initDist, sizeof(uint)*graph->size(), cudaMemcpyHostToDevice);
-
-	for (int i = 0; i < edge_counter; ++i) {
-		h_edge_idx[i] = i;
-	}
-
-	cudaMemcpy(d_edge_idx, h_edge_idx, sizeof(uint)*edge_counter, cudaMemcpyHostToDevice);
+	cudaMemcpy(edge_offset_ds, h_edge_idx, sizeof(uint)*edge_counter, cudaMemcpyHostToDevice);
 
 	for (int i = 0; i < graph->size()-1; ++i) {
 		setTime();
@@ -240,12 +240,9 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		cudaMemset(device_warp_update_ds, 0, sizeof(uint)*warp_num);
 		cudaMemcpy(temp_distance, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 
-		edge_process<<<blockNum, blockSize>>>(L, d_edge_idx, count_to_process, distance_cur, distance_prev, anyChange, flag);
-		
+		edge_process<<<blockNum, blockSize>>>(L, edge_offset_ds, initial_edge_counter, distance_cur, distance_prev, anyChange, flag);
 		cudaDeviceSynchronize();
-
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
-
 		cudaMemcpy(&check_if_change, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
 		
 		compute_time += getTime();
@@ -255,14 +252,19 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		}
 
 		setTime();
+		
 		warp_count_kernel<<<blockNum, blockSize>>>(L, device_warp_update_ds, edge_counter, flag);		
 		cudaDeviceSynchronize();
+
 		prefix_sum<<<blockNum, blockSize>>>(device_warp_update_ds, warp_num, device_edge_counter);
 		cudaDeviceSynchronize();
-		filter_kernel<<<blockNum, blockSize>>>(L, d_edge_idx, device_warp_update_ds, edge_counter, flag);
+		
+		filter_kernel<<<blockNum, blockSize>>>(L, edge_offset_ds, device_warp_update_ds, edge_counter, flag);
 		cudaDeviceSynchronize();
-		cudaMemcpy(&count_to_process, device_edge_counter, sizeof(uint), cudaMemcpyDeviceToHost);
-		cudaMemcpy(h_edge_idx, d_edge_idx, sizeof(uint)*edge_counter, cudaMemcpyDeviceToHost);
+		
+		cudaMemcpy(&initial_edge_counter, device_edge_counter, sizeof(uint), cudaMemcpyDeviceToHost);
+		cudaMemcpy(h_edge_idx, edge_offset_ds, sizeof(uint)*edge_counter, cudaMemcpyDeviceToHost);
+		
 		filter_time += getTime();
 	}
 
@@ -281,7 +283,7 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	free(initDist);
 	delete[] h_edge_idx;
 	cudaFree(L);
-	cudaFree(d_edge_idx);
+	cudaFree(edge_offset_ds);
 	cudaFree(device_edge_counter);
 	cudaFree(flag);
 	cudaFree(distance_cur);
