@@ -22,40 +22,6 @@ unsigned int total_edges_impl2(std::vector<initial_vertex>& graph){
 	return edge_counter;
 }
 
-__global__ void prefix_sum(uint* warp_count, uint warp_num, uint *nEdges) {
-
-	__shared__ uint shared_mem[2048];
-
-	int threadId = blockDim.x * blockIdx.x + threadIdx.x;
-	int threadCount = blockDim.x * gridDim.x;
-	if (threadId == 0) {
-		*nEdges = warp_count[warp_num - 1];
-	}
-	
-	if (threadId < warp_num)
-		shared_mem[threadId] = warp_count[threadId];
-
-	__syncthreads();
-
-	for (int offset = 1; offset < warp_num; offset *= 2) {
-		for (int idx = threadId; idx < warp_num; idx += threadCount) {
-			if (idx >= offset) {
-				warp_count[idx] += warp_count[idx - offset];
-			}
-		}
-
-		__syncthreads();
-	}	
-	
-	if (threadId == 0) {
-		*nEdges += warp_count[warp_num - 1];
-	}
-
-	
-	if (threadId < warp_num)
-		warp_count[threadId] -= shared_mem[threadId];
-}
-
 //L, device_warp_update_ds, edge_counter, flag
 __global__ void warp_count_kernel(graph_node *L, unsigned int *warp_update_ds, const unsigned int edge_counter, unsigned int *flag){
     
@@ -206,6 +172,8 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		warp_num = total_threads/32 + 1;
 	}
 	
+	unsigned int *temp_warp_update = new unsigned int[warp_num];
+	
 	unsigned int *initDist;
 	//set initial distance to max except for source node
 	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
@@ -255,9 +223,10 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		
 		warp_count_kernel<<<blockNum, blockSize>>>(L, device_warp_update_ds, edge_counter, flag);		
 		cudaDeviceSynchronize();
-
-		prefix_sum<<<blockNum, blockSize>>>(device_warp_update_ds, warp_num, device_edge_counter);
+		cudaMemcpy(temp_warp_update, device_warp_update_ds, sizeof(uint)*warp_num, cudaMemcpyDeviceToHost);
+		thrust::exclusive_scan(temp_warp_update, temp_warp_update + warp_num, temp_warp_update);
 		cudaDeviceSynchronize();
+		cudaMemcpy(device_warp_update_ds, temp_warp_update, sizeof(uint)*warp_num, cudaMemcpyHostToDevice);
 		
 		filter_kernel<<<blockNum, blockSize>>>(L, edge_offset_ds, device_warp_update_ds, edge_counter, flag);
 		cudaDeviceSynchronize();
@@ -374,6 +343,8 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 		warp_num = total_threads/32 + 1;
 	}
 	
+	unsigned int *temp_warp_update = new unsigned int[warp_num];
+
 	unsigned int *initDist;
 	//set initial distance to max except for source node
 	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
@@ -422,8 +393,10 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 		warp_count_kernel<<<blockNum, blockSize>>>(L, device_warp_update_ds, edge_counter, flag);		
 		cudaDeviceSynchronize();
 
-		prefix_sum<<<blockNum, blockSize>>>(device_warp_update_ds, warp_num, device_edge_counter);
+		cudaMemcpy(temp_warp_update, device_warp_update_ds, sizeof(uint)*warp_num, cudaMemcpyDeviceToHost);
+		thrust::exclusive_scan(temp_warp_update, temp_warp_update + warp_num, temp_warp_update);
 		cudaDeviceSynchronize();
+		cudaMemcpy(device_warp_update_ds, temp_warp_update, sizeof(uint)*warp_num, cudaMemcpyHostToDevice);
 		
 		filter_kernel<<<blockNum, blockSize>>>(L, edge_offset_ds, device_warp_update_ds, edge_counter, flag);
 		cudaDeviceSynchronize();
