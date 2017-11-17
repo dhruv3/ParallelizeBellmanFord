@@ -66,7 +66,7 @@ __global__ void edge_process(const graph_node *L, const unsigned int edge_counte
 void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
    unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
-	int *device_anyChange = (int*)malloc(sizeof(int));
+	int check_if_change;
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -112,16 +112,14 @@ void puller(std::vector<initial_vertex> * graph, int blockSize, int blockNum, of
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
-		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!device_anyChange[0]){
+		cudaMemcpy(&check_if_change, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(check_if_change == 0){
 			break;
 		} 
-		else {
-			cudaMemset(anyChange, 0, (size_t)sizeof(int));
-			cudaMemcpy(swapDistVariable, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
-			cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
-			cudaMemcpy(distance_prev, swapDistVariable,(sizeof(unsigned int))*(graph->size()), cudaMemcpyHostToDevice);
-		}
+		cudaMemset(anyChange, 0, (size_t)sizeof(int));
+		cudaMemcpy(swapDistVariable, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
+		cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(distance_prev, swapDistVariable,(sizeof(unsigned int))*(graph->size()), cudaMemcpyHostToDevice);
 	}
 
 	cout << "Took " << getTime() << "ms.\n";
@@ -187,7 +185,7 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 	unsigned int *initDist, *distance; 
 	int *anyChange;
-	int *device_anyChange = (int*)malloc(sizeof(int));
+	int check_if_change;
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -229,13 +227,11 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process_incore<<<blockNum,blockSize>>>(L, edge_counter, distance, anyChange);
-		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!device_anyChange[0]){
+		cudaMemcpy(&check_if_change, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(check_if_change == 0){
 			break;
 		} 
-		else {
-			cudaMemset(anyChange, 0, (size_t)sizeof(int));
-		}
+		cudaMemset(anyChange, 0, (size_t)sizeof(int));
 	}
 
 	std::cout << "Took " << getTime() << "ms.\n";
@@ -329,7 +325,7 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_c
 void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
    unsigned int *initDist, *distance_cur, *distance_prev; 
 	int *anyChange;
-	int *device_anyChange = (int*)malloc(sizeof(int));
+	int check_if_change;
 	graph_node *edge_list, *L;
 	unsigned int edge_counter;
 	edge_counter = total_edges(*graph);
@@ -369,16 +365,14 @@ void puller_smem(std::vector<initial_vertex> * graph, int blockSize, int blockNu
 
 	for(int i=0; i < ((int) graph->size())-1; i++){
 		edge_process_smem<<<blockNum,blockSize>>>(L, edge_counter, distance_prev, distance_cur, anyChange);
-		cudaMemcpy(device_anyChange, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
-		if(!device_anyChange[0]){
+		cudaMemcpy(&check_if_change, anyChange, sizeof(int), cudaMemcpyDeviceToHost);
+		if(check_if_change == 0){
 			break;
 		} 
-		else {
-			cudaMemset(anyChange, 0, (size_t)sizeof(int));
-			cudaMemcpy(swapDistVariable, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
-			cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
-			cudaMemcpy(distance_prev, swapDistVariable,(sizeof(unsigned int))*(graph->size()), cudaMemcpyHostToDevice);
-		}
+		cudaMemset(anyChange, 0, (size_t)sizeof(int));
+		cudaMemcpy(swapDistVariable, distance_cur, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToHost);
+		cudaMemcpy(distance_cur, distance_prev, (sizeof(unsigned int))*(graph->size()), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(distance_prev, swapDistVariable,(sizeof(unsigned int))*(graph->size()), cudaMemcpyHostToDevice);
 	}
 
 	std::cout << "Took " << getTime() << "ms.\n";
