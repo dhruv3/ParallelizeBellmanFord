@@ -22,7 +22,6 @@ unsigned int total_edges_impl2(std::vector<initial_vertex>& graph){
 	return edge_counter;
 }
 
-//L, device_warp_update_ds, edge_counter, flag
 __global__ void set_warp_count(graph_node *L, unsigned int *warp_update_ds, const unsigned int edge_counter, unsigned int *flag){
     
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
@@ -50,12 +49,11 @@ __global__ void set_warp_count(graph_node *L, unsigned int *warp_update_ds, cons
     for(int i = beg; i < end; i+=32){
     	edge = L + i;
 		int mask = __ballot(flag[edge->src]);
-	    temp_num = __popc(mask);
-	    warp_update_ds[warp_id] += temp_num;
+	    warp_update_ds[warp_id] += __popc(mask);
     }
 }
 
-__global__ void filter_T(graph_node *L, uint *edge_idx, unsigned int *warp_update_ds, const unsigned int edge_counter, unsigned int *flag){
+__global__ void filter_T(graph_node *L, uint *edge_offset_ds, unsigned int *warp_update_ds, const unsigned int edge_counter, unsigned int *flag){
     int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
     int total_threads = blockDim.x * gridDim.x;
 	int warp_id = thread_id/32;
@@ -83,7 +81,7 @@ __global__ void filter_T(graph_node *L, uint *edge_idx, unsigned int *warp_updat
 		int mask = __ballot(flag[L[i].src]);
 		int inner_idx = __popc(mask << (32 - lane_id));
 		if(flag[edge->src]){
-		    edge_idx[cur_offset + inner_idx + warp_update_ds[warp_id]]= i;
+		    edge_offset_ds[cur_offset + inner_idx + warp_update_ds[warp_id]]= i;
 		}
 		cur_offset += __popc(mask);
     }
@@ -93,7 +91,10 @@ __global__ void filter_T(graph_node *L, uint *edge_idx, unsigned int *warp_updat
 
 //outcore
 //kernel outcore method
-__global__ void edge_process(graph_node *L, uint *edge_idx, const uint edge_counter, unsigned int *distance_cur, unsigned int *distance_prev, int *anyChange, unsigned int *flag){
+//2 extra params: 
+//edge_offset_ds- 
+//flag- to set bit for the vertex whose src changes
+__global__ void edge_process(graph_node *L, uint *edge_offset_ds, const uint edge_counter, unsigned int *distance_cur, unsigned int *distance_prev, int *anyChange, unsigned int *flag){
 	
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -118,7 +119,7 @@ __global__ void edge_process(graph_node *L, uint *edge_idx, const uint edge_coun
 	unsigned int u, v, w;
 	graph_node *edge;
 	for(int i = beg; i < end; i+=32){
-		edge = L + edge_idx[i];
+		edge = L + edge_offset_ds[i];
 		u = edge->src;
 		v = edge->dst;
 		w = edge->weight;
@@ -157,7 +158,6 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 
 	unsigned int initial_edge_counter = edge_counter;
 
-	//todo host_edge_offset_ds
 	unsigned int *host_edge_offset_ds = new unsigned int[edge_counter];
 	for (int i = 0; i < edge_counter; ++i) {
 		host_edge_offset_ds[i] = i;
@@ -265,7 +265,10 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 
 //incore
 //kernel incore method
-__global__ void edge_process_incore(graph_node *L, uint *edge_idx, const uint edge_counter, unsigned int *distance, int *anyChange, unsigned int *flag){
+//2 extra params: 
+//edge_offset_ds- 
+//flag- to set bit for the vertex whose src changes
+__global__ void edge_process_incore(graph_node *L, unsigned int *edge_offset_ds, const unsigned int edge_counter, unsigned int *distance, int *anyChange, unsigned int *flag){
 
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
@@ -290,7 +293,7 @@ __global__ void edge_process_incore(graph_node *L, uint *edge_idx, const uint ed
 	unsigned int u, v, w;
 	graph_node *edge;
 	for(int i = beg; i < end; i+=32){
-		edge = L + edge_idx[i];
+		edge = L + edge_offset_ds[i];
 		u = edge->src;
 		v = edge->dst;
 		w = edge->weight;
@@ -329,7 +332,6 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 
 	unsigned int initial_edge_counter = edge_counter;
 
-	//todo host_edge_offset_ds
 	unsigned int *host_edge_offset_ds = new unsigned int[edge_counter];
 	for (int i = 0; i < edge_counter; ++i) {
 		host_edge_offset_ds[i] = i;
