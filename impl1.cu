@@ -258,6 +258,15 @@ void puller_incore(vector<initial_vertex> * graph, int blockSize, int blockNum, 
 
 
 //using shared memory
+
+__device__ uint get_min(uint val1, uint val2) {
+	if (val1 < val2) {
+		return val1;
+	} else {
+		return val2;
+	}
+}
+
 //smem kernel method
 __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_counter, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
 	__shared__ int rows[1024];
@@ -302,18 +311,18 @@ __global__ void edge_process_smem(const graph_node *L, const unsigned int edge_c
 
 		int lane = thread_id % 32;
 		if (lane >= 1 && rows[threadIdx.x] == rows[threadIdx.x - 1])
-			vals[threadIdx.x] += vals[threadIdx.x - 1];
+			vals[threadIdx.x] = get_min(vals[threadIdx.x], vals[threadIdx.x - 1]);
 		if (lane >= 2 && rows[threadIdx.x] == rows[threadIdx.x - 2])
-			vals[threadIdx.x] += vals[threadIdx.x - 2];
+			vals[threadIdx.x] = get_min(vals[threadIdx.x], vals[threadIdx.x - 2]);
 		if (lane >= 4 && rows[threadIdx.x] == rows[threadIdx.x - 4])
-			vals[threadIdx.x] += vals[threadIdx.x - 4];
+			vals[threadIdx.x] = get_min(vals[threadIdx.x], vals[threadIdx.x - 4]);
 		if (lane >= 8 && rows[threadIdx.x] == rows[threadIdx.x - 8])
-			vals[threadIdx.x] += vals[threadIdx.x - 8];
+			vals[threadIdx.x] = get_min(vals[threadIdx.x], vals[threadIdx.x - 8]);
 		if (lane >= 16 && rows[threadIdx.x] == rows[threadIdx.x - 16])
-			vals[threadIdx.x] += vals[threadIdx.x - 16];
+			vals[threadIdx.x] = get_min(vals[threadIdx.x], vals[threadIdx.x - 16]);
 		//write output if we are dealing with last thread in warp or rows are different
 		if ((lane == 31) || (rows[threadIdx.x] != rows[threadIdx.x + 1])){
-			atomicAdd(&distance_cur[rows[threadIdx.x]], vals[threadIdx.x]);
+			atomicMin(&distance_cur[rows[threadIdx.x]], vals[threadIdx.x]);
 		}
 
 		if(distance_cur[v] < temp)
