@@ -13,6 +13,10 @@ int cmp_edge1(const void *a, const void *b){
 	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
 }
 
+int cmp_edge1_dst(const void *a, const void *b){	
+	return ( (int)(((graph_node *)a)->dst) - (int)(((graph_node *)b)->dst));
+}
+
 //get total edges
 unsigned int total_edges_impl2(std::vector<initial_vertex>& graph){
 	unsigned int edge_counter = 0;

@@ -26,6 +26,10 @@ int cmp_edge(const void *a, const void *b){
 	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
 }
 
+int cmp_edge1_dst(const void *a, const void *b){	
+	return ( (int)(((graph_node *)a)->dst) - (int)(((graph_node *)b)->dst));
+}
+
 //outcore
 //kernel outcore method
 __global__ void edge_process(const graph_node *L, const unsigned int edge_counter, unsigned int *distance_prev, unsigned int *distance_cur, int *anyChange){
