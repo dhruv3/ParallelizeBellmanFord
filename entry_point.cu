@@ -29,6 +29,79 @@ void openFileToAccess( T_file& input_file, std::string file_name ) {
 		throw std::runtime_error( "Failed to open specified file: " + file_name + "\n" );
 }
 
+void testCorrectness(graph_node *edges, const char* outputFileName, uint nVertices, uint nEdges) {
+	
+	std::cout << std::endl << "TESTING CORRECTNESS" << std::endl;
+	std::cout << "RUNNING SEQUENTIAL BMF..." << std::endl;
+	
+	unsigned int *d= new unsigned int[nVertices];
+	
+	d[0]=0;
+	for (int i = 1; i < nVertices; ++i){
+		d[i] = UINT_MAX;
+	}
+
+	int change = 0;
+	for(int i = 1; i < nVertices; i++){
+		for(int j = 0; j < nEdges; j++){
+			int u = edges[j].src;
+			int v = edges[j].dst;
+			int w = edges[j].weight;
+			if(d[u] == UINT_MAX){
+				continue;
+			} else if(d[u]+w < d[v]){
+				d[v] = d[u]+w;
+				change = 1;
+			}
+		}
+		if(!change){
+			break;
+		}
+		change = 0;
+	}
+	
+	//Compare the distance array and the parallel output file
+	std::ifstream outputFile;
+	openFileToAccess< std::ifstream >( outputFile, std::string( outputFileName ) );
+
+	std::string line;
+	int i = 0;
+	int incorrect = 0;
+	while (getline(outputFile,line)) {
+		std::string curr = (d[i] < UINT_MAX) ? (std::to_string(i) + ":" + std::to_string(d[i])):(std::to_string(i) +":" + "INF");
+
+		if(line.compare(curr) != 0) {
+			incorrect++;
+    		//std::cout << "Correct: " << curr << "\tYours: " << line << std::endl;
+		}
+		i++;
+	}
+	if(i != nVertices) {
+		std::cout << "Insufficient vertices found in outputfile" << std::endl;
+		std::cout << "Expected: " << nVertices << "Found: " << i << std::endl;
+		return;
+	}
+	std::cout << "Correct: " << std::to_string(nVertices-incorrect) << "\t Incorrect: " << std::to_string(incorrect) << " \t Total: " << std::to_string(nVertices) << std::endl;
+	outputFile.close();
+	delete[] d;
+}
+
+void pull_edges(std::vector<initial_vertex>& graph, graph_node* edge_list, unsigned int edge_num){
+
+	unsigned int k = 0;
+
+	for(int i = 0 ; i < graph.size() ; i++){
+		std::vector<neighbor> nbrs = (graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++, k++){
+			edge_list[k].src = nbrs[j].srcIndex;
+			edge_list[k].dst = i;
+			edge_list[k].weight = nbrs[j].edgeValue.weight;
+	    }
+	}
+
+	if( k != edge_num )
+	    printf("ERROR: Edge numbers don't match up\n");
+}
 
 // Execution entry point.
 int main( int argc, char** argv )
@@ -144,16 +217,16 @@ int main( int argc, char** argv )
 
 		switch(processingMethod){
 			case ProcessingType::Push:
-				if(syncMethod == OutOfCore){
+				if(smemMethod == UseSmem){
+					cout << "USE SMEM" << endl;
+					puller_smem(&parsedGraph, bsize, bcount, outputFile);
+				} 
+				else if(syncMethod == OutOfCore){
 					puller(&parsedGraph, bsize, bcount, outputFile);
 				} 
 				else if(syncMethod == InCore){
 					puller_incore(&parsedGraph, bsize, bcount, outputFile);
 				}
-				else if(smemMethod == UseSmem){
-					cout << "USE SMEM" << endl;
-					puller_smem(&parsedGraph, bsize, bcount, outputFile);
-				} 
 				else {
 					cout << "syncMethod not specified" << endl;
 					exit(EXIT_FAILURE);
@@ -178,7 +251,9 @@ int main( int argc, char** argv )
 		/********************************
 		 * It's done here.
 		 ********************************/
-
+		graph_node *testEdgeList = new graph_node[nEdges];
+		pull_edges(parsedGraph, testEdgeList, nEdges);
+		testCorrectness(testEdgeList, outputFileName.c_str(), parsedGraph.size(), nEdges);
 		CUDAErrorCheck( cudaDeviceReset() );
 		std::cout << "Done.\n";
 		return( EXIT_SUCCESS );
