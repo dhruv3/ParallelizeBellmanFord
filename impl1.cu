@@ -23,11 +23,11 @@ unsigned int total_edges(std::vector<initial_vertex>& graph){
 
 //comparator function used by qsort
 int cmp_edge(const void *a, const void *b){	
-	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
+	return ( (((graph_node *)a)->src) - (((graph_node *)b)->src));
 }
 
 int cmp_edge_dst(const void *a, const void *b){	
-	return ( (int)(((graph_node *)a)->dst) - (int)(((graph_node *)b)->dst));
+	return ( (((graph_node *)a)->dst) - (((graph_node *)b)->dst));
 }
 
 //outcore

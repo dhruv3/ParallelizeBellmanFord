@@ -10,11 +10,11 @@ using namespace std;
 
 //comparator function used by qsort
 int cmp_edge1(const void *a, const void *b){	
-	return ( (int)(((graph_node *)a)->src) - (int)(((graph_node *)b)->src));
+	return ( (((graph_node *)a)->src) - (((graph_node *)b)->src));
 }
 
 int cmp_edge1_dst(const void *a, const void *b){	
-	return ( (int)(((graph_node *)a)->dst) - (int)(((graph_node *)b)->dst));
+	return ( (((graph_node *)a)->dst) - (((graph_node *)b)->dst));
 }
 
 //get total edges
@@ -52,6 +52,7 @@ __global__ void set_warp_count(graph_node *L, unsigned int *warp_update_ds, cons
     graph_node *edge;
     for(int i = beg; i < end; i+=32){
     	edge = L + i;
+    	//as per desc given
 		int mask = __ballot(flag[edge->src]);
 	    warp_update_ds[warp_id] += __popc(mask);
     }
@@ -82,6 +83,7 @@ __global__ void filter_T(graph_node *L, uint *edge_offset_ds, unsigned int *warp
     graph_node *edge;
     for(int i = beg; i < end; i+=32){
     	edge = L + i;
+    	//as per desc given
 		int mask = __ballot(flag[L[i].src]);
 		int inner_idx = __popc(mask << (32 - lane_id));
 		if(flag[edge->src]){
@@ -89,7 +91,6 @@ __global__ void filter_T(graph_node *L, uint *edge_offset_ds, unsigned int *warp
 		}
 		cur_offset += __popc(mask);
     }
-
 }
 
 
@@ -140,14 +141,18 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	double filter_time = 0;
 	double compute_time = 0;
 
-	graph_node *edge_list, *L;
-	
-	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
-	
-	int *anyChange;
-	int check_if_change;
+	unsigned int *initDist;
+	//set initial distance to max except for source node
+	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
+	initDist[0] = 0;
+	for(int i = 1; i < graph->size(); i++){
+	    initDist[i] = UINT_MAX; 
+	}
 
 	unsigned int edge_counter = total_edges_impl2(*graph);
+	unsigned int initial_edge_counter = edge_counter;
+
+	graph_node *edge_list;
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	//for each member of edge list set initial values
 	unsigned int k = 0;
@@ -160,7 +165,15 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	    }
 	}
 
-	unsigned int initial_edge_counter = edge_counter;
+	//sort by source vertex
+	//http://www.cplusplus.com/reference/cstdlib/qsort/
+	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge1);
+	//sort by dst
+	//qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge1_dst);
+
+	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
+	graph_node *L;
+	int *anyChange, check_if_change;
 
 	unsigned int *host_edge_offset_ds = new unsigned int[edge_counter];
 	for (int i = 0; i < edge_counter; ++i) {
@@ -177,15 +190,6 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 	}
 	
 	unsigned int *temp_warp_update = new unsigned int[warp_num];
-	
-	unsigned int *initDist;
-	//set initial distance to max except for source node
-	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
-	initDist[0] = 0;
-	for(int i = 1; i < graph->size(); i++){
-	    initDist[i] = UINT_MAX; 
-	}
-
 	
 	cudaMalloc((void**)&edge_offset_ds, sizeof(unsigned int)*edge_counter);
 	cudaMalloc((void**)&device_edge_counter, sizeof(unsigned int));
@@ -227,8 +231,8 @@ void puller_outcore_impl2(std::vector<initial_vertex> * graph, int blockSize, in
 		
 		set_warp_count<<<blockNum, blockSize>>>(L, device_warp_update_ds, edge_counter, flag);		
 		cudaDeviceSynchronize();
+
 		cudaMemcpy(temp_warp_update, device_warp_update_ds, sizeof(uint)*warp_num, cudaMemcpyDeviceToHost);
-		
 		thrust::exclusive_scan(temp_warp_update, temp_warp_update + warp_num, temp_warp_update);
 		cudaDeviceSynchronize();
 		cudaMemcpy(device_warp_update_ds, temp_warp_update, sizeof(uint)*warp_num, cudaMemcpyHostToDevice);
@@ -314,14 +318,17 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 	double filter_time = 0;
 	double compute_time = 0;
 
-	graph_node *edge_list, *L;
-	
-	unsigned int *distance, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
-	
-	int *anyChange;
-	int check_if_change;
+	unsigned int *initDist;
+	//set initial distance to max except for source node
+	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
+	initDist[0] = 0;
+	for(int i = 1; i < graph->size(); i++){
+	    initDist[i] = UINT_MAX; 
+	}
 
 	unsigned int edge_counter = total_edges_impl2(*graph);
+	unsigned int initial_edge_counter = edge_counter;
+	graph_node *edge_list;
 	edge_list = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	//for each member of edge list set initial values
 	unsigned int k = 0;
@@ -333,8 +340,15 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 			edge_list[k].weight = nbrs[j].edgeValue.weight;
 	    }
 	}
+	//sort by source vertex
+	//http://www.cplusplus.com/reference/cstdlib/qsort/
+	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge1);
+	//sort by dst
+	//qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge1_dst);
 
-	unsigned int initial_edge_counter = edge_counter;
+	unsigned int *distance, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
+	graph_node *L;
+	int *anyChange, check_if_change;
 
 	unsigned int *host_edge_offset_ds = new unsigned int[edge_counter];
 	for (int i = 0; i < edge_counter; ++i) {
@@ -351,15 +365,6 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 	}
 	
 	unsigned int *temp_warp_update = new unsigned int[warp_num];
-
-	unsigned int *initDist;
-	//set initial distance to max except for source node
-	initDist = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());	
-	initDist[0] = 0;
-	for(int i = 1; i < graph->size(); i++){
-	    initDist[i] = UINT_MAX; 
-	}
-
 	
 	cudaMalloc((void**)&edge_offset_ds, sizeof(unsigned int)*edge_counter);
 	cudaMalloc((void**)&device_edge_counter, sizeof(unsigned int));
@@ -382,8 +387,8 @@ void puller_incore_impl2(std::vector<initial_vertex> * graph, int blockSize, int
 		cudaMemset(anyChange, 0, sizeof(int));
 		cudaMemset(flag, 0, sizeof(uint)*graph->size());
 		cudaMemset(device_warp_update_ds, 0, sizeof(uint)*warp_num);
+		
 		cudaMemcpy(temp_distance, distance, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
-
 		edge_process_incore<<<blockNum, blockSize>>>(L, edge_offset_ds, initial_edge_counter, distance, anyChange, flag);
 		cudaDeviceSynchronize();
 		cudaMemcpy(distance, distance, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
