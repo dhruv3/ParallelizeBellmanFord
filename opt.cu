@@ -166,8 +166,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge_src);
 
 	//create allneighbor
-	unsigned int *allNeighborNumber;
-	allNeighborNumber = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
+	unsigned int *allNeighborNumber = new unsigned int[graph->size()];
 	for(int i = 0; i < graph->size(); i++){
 		allNeighborNumber[i] = 0;
 	}
@@ -178,6 +177,14 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	    	allNeighborNumber[src] += 1;
 	    }
 	}
+
+  //create allOffsets
+  unsigned int *allOffsets = new unsigned int[graph->size() + 1];
+  for(int i = 0; i < graph->size(); i++){
+	    allOffsets[i] = allNeighborNumber[i];
+	}
+  thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
+  allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
 
 	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
 	graph_node *L;
