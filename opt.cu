@@ -55,14 +55,10 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 		v = edge->dst;
 		w = edge->weight;
 		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_prev[v] && distance_prev[u] + w < distance_cur[v]){
-			printf("Hello thread %d\n", threadIdx.x);
 			int old_val = atomicMin(&distance_cur[v], distance_prev[u] + w);
-			printf("old_val %d\n", old_val);
 			if(old_val >= distance_prev[v] && distance_prev[u] + w < old_val){
 				int idx = atomicAdd(&queueCounter[0], 1);
-				printf("idx %d\n", idx);
 				nodeQueue[idx] = v;
-				printf("v %d\n", v);
 			}
 		}
 	}
@@ -122,7 +118,6 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
   thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
   allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
 
-	std::cout << "before l_new" << "\n";
 	//create a new l'
 	graph_node *L_new;
 	L_new = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
@@ -135,7 +130,6 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		}
 	}
 
-	std::cout << "before nodeQueue" << "\n";
 	//create nodeQueue
 	unsigned int *nodeQueue = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
 	unsigned int *device_nodeQueue = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
@@ -145,9 +139,8 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	}
 	cudaMemcpy(device_nodeQueue, nodeQueue, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
 
-	std::cout << "before queueCounter" << "\n";
 	//queueCounter
-	unsigned int *queueCounter = 0;
+	unsigned int queueCounter = 0;
 	unsigned int *device_queueCounter;
 	cudaMalloc((void**)&device_queueCounter, sizeof(unsigned int));
 	cudaMemcpy(device_queueCounter, &queueCounter, sizeof(uint), cudaMemcpyHostToDevice);
@@ -166,7 +159,6 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		warp_num = total_threads/32 + 1;
 	}
 
-	std::cout << "before cuda thingys" << "\n";
 	unsigned int *temp_warp_update = new unsigned int[warp_num];
 
 	cudaMalloc((void**)&device_edge_counter, sizeof(unsigned int));
@@ -185,31 +177,28 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaMemcpy(device_edge_counter, &edge_counter, sizeof(uint), cudaMemcpyHostToDevice);
 
 	for (int i = 0; i < graph->size()-1; ++i) {
-		std::cout << "inside for" << "\n";
-		setTime();
-
 		cudaMemset(device_warp_update_ds, 0, sizeof(uint)*warp_num);
 		cudaMemcpy(temp_distance, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
-		std::cout << "before kernel" << "\n";
 		edge_process_opt<<<blockNum, blockSize>>>(device_L_new, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
-		std::cout << "after kernel"<< "\n";
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
-
-		for(int j = 0; j < 10; j++){
-			std::cout << nodeQueue[j] << "\n";
+		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
+		//create neighborNumber
+		unsigned int *neighborNumber = new unsigned int[queueCounter];
+		for(int j = 0; j < queueCounter; j++){
+			int idx = nodeQueue[j];
+			neighborNumber[j] = allNeighborNumber[idx];
 		}
+		//create nodeOffset
+		unsigned int *nodeOffsets = new unsigned int[queueCounter + 1];
+		for(int i = 0; i < queueCounter; i++){
+		    nodeOffsets[i] = neighborNumber[i];
+		}
+		thrust::exclusive_scan(nodeOffsets, nodeOffsets + queueCounter, nodeOffsets);
+		nodeOffsets[queueCounter] = nodeOffsets[queueCounter - 1] + neighborNumber[queueCounter - 1];
 		break;
-		compute_time += getTime();
-
-		setTime();
-
-		filter_time += getTime();
 	}
-
-	std::cout << "Compute Time: " << compute_time << "\n";
-	std::cout << "Filter Time: " << filter_time;
 
 	cudaMemcpy(initDist, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 
