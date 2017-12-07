@@ -48,16 +48,21 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 
 	unsigned int u, v, w;
 	graph_node *edge;
+	//printf("Hello thread %d\n", threadIdx.x);
 	for(int i = beg; i < end; i+=32){
 		edge = L + i;
 		u = edge->src;
 		v = edge->dst;
 		w = edge->weight;
 		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_prev[v] && distance_prev[u] + w < distance_cur[v]){
+			printf("Hello thread %d\n", threadIdx.x);
 			int old_val = atomicMin(&distance_cur[v], distance_prev[u] + w);
+			printf("old_val %d\n", old_val);
 			if(old_val >= distance_prev[v] && distance_prev[u] + w < old_val){
 				int idx = atomicAdd(&queueCounter[0], 1);
+				printf("idx %d\n", idx);
 				nodeQueue[idx] = v;
+				printf("v %d\n", v);
 			}
 		}
 	}
@@ -117,6 +122,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
   thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
   allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
 
+	std::cout << "before l_new" << "\n";
 	//create a new l'
 	graph_node *L_new;
 	L_new = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
@@ -129,12 +135,17 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		}
 	}
 
+	std::cout << "before nodeQueue" << "\n";
 	//create nodeQueue
-	unsigned int *nodeQueue = new unsigned int[graph->size()];
-	unsigned int *device_nodeQueue = new unsigned int[graph->size()];
+	unsigned int *nodeQueue = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
+	unsigned int *device_nodeQueue = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
 	cudaMalloc((void**)&device_nodeQueue, sizeof(unsigned int)*graph->size());
-	cudaMemcpy(device_nodeQueue, &nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyHostToDevice);
+	for(int i = 0; i < graph->size(); i++){
+		nodeQueue[i] = -1;
+	}
+	cudaMemcpy(device_nodeQueue, nodeQueue, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
 
+	std::cout << "before queueCounter" << "\n";
 	//queueCounter
 	unsigned int *queueCounter = 0;
 	unsigned int *device_queueCounter;
@@ -155,6 +166,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		warp_num = total_threads/32 + 1;
 	}
 
+	std::cout << "before cuda thingys" << "\n";
 	unsigned int *temp_warp_update = new unsigned int[warp_num];
 
 	cudaMalloc((void**)&device_edge_counter, sizeof(unsigned int));
@@ -173,15 +185,22 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaMemcpy(device_edge_counter, &edge_counter, sizeof(uint), cudaMemcpyHostToDevice);
 
 	for (int i = 0; i < graph->size()-1; ++i) {
+		std::cout << "inside for" << "\n";
 		setTime();
 
 		cudaMemset(device_warp_update_ds, 0, sizeof(uint)*warp_num);
 		cudaMemcpy(temp_distance, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
-
+		std::cout << "before kernel" << "\n";
 		edge_process_opt<<<blockNum, blockSize>>>(device_L_new, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
+		std::cout << "after kernel"<< "\n";
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 
+		for(int j = 0; j < 10; j++){
+			std::cout << nodeQueue[j] << "\n";
+		}
+		break;
 		compute_time += getTime();
 
 		setTime();
