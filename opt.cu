@@ -145,13 +145,6 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	    initDist[i] = UINT_MAX;
 	}
 
-	//create allneighbor
-	unsigned int *allNeighborNumber;
-	allNeighborNumber = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
-	for(int i = 0; i < graph->size(); i++){
-	    allNeighborNumber[i] = (*graph)[i].nbrs.size();
-	}
-
 	unsigned int edge_counter = total_edges_opt(*graph);
 	unsigned int initial_edge_counter = edge_counter;
 
@@ -171,6 +164,20 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	//sort by source vertex
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge_src);
+
+	//create allneighbor
+	unsigned int *allNeighborNumber;
+	allNeighborNumber = (unsigned int*)malloc(sizeof(unsigned int)*graph->size());
+	for(int i = 0; i < graph->size(); i++){
+		allNeighborNumber[i] = 0;
+	}
+	for(int i = 0; i < graph->size(); i++){
+	    std::vector<neighbor> nbrs = (*graph)[i].nbrs;
+	    for(int j = 0 ; j < nbrs.size() ; j++){
+	    	int src = nbrs[j].srcIndex;
+	    	allNeighborNumber[src] += 1;
+	    }
+	}
 
 	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
 	graph_node *L;
