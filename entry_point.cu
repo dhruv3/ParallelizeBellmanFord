@@ -254,7 +254,7 @@ int main( int argc, char** argv )
 				}
 			    break;
 			default:
-			    own(&parsedGraph, bsize, bcount);
+			    puller(&parsedGraph, bsize, bcount, outputFile);
 		}
 
 		/********************************
