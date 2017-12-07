@@ -186,6 +186,29 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
   thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
   allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
 
+	//create a new l'
+	graph_node *L_new;
+	L_new = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+	for(int i = 0, j=0 ; i < edge_counter; i++){
+		if(edge_list[i].src == 0){
+			L_new[j].src = edge_list[i].src;
+			L_new[j].dst = edge_list[i].dst;
+			L_new[j].weight = edge_list[i].weight;
+			j++;
+		}
+		std::cout << j << "\n";
+	}
+
+	//create nodeQueue
+	std::vector<int> nodeQueue;
+	std::vector<int> device_nodeQueue;
+
+	//queueCounter
+	unsigned int *queueCounter = 0;
+	unsigned int *device_queueCounter;
+	cudaMalloc((void**)&device_queueCounter, sizeof(int));
+	cudaMemset(device_queueCounter, 0, sizeof(int));
+
 	unsigned int *distance_cur, *distance_prev, *flag, *temp_distance, *device_warp_update_ds, *device_edge_counter, *edge_offset_ds;
 	graph_node *L;
 	int *anyChange, check_if_change;
