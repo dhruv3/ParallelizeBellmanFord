@@ -117,15 +117,18 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	}
   thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
   allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
+	unsigned int *device_allOffsets = new unsigned int[graph->size() + 1];
+	cudaMalloc((void**)&device_allOffsets, sizeof(unsigned int)*(graph->size()+1));
+	cudaMemcpy(device_allOffsets, allOffsets, sizeof(unsigned int)*(graph->size()+1), cudaMemcpyHostToDevice);
 
-	//create a new l'
-	graph_node *L_new;
-	L_new = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+	//create a new tpe
+	graph_node *tpe;
+	tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 	for(int i = 0, j=0 ; i < edge_counter; i++){
 		if(edge_list[i].src == 0){
-			L_new[j].src = edge_list[i].src;
-			L_new[j].dst = edge_list[i].dst;
-			L_new[j].weight = edge_list[i].weight;
+			tpe[j].src = edge_list[i].src;
+			tpe[j].dst = edge_list[i].dst;
+			tpe[j].weight = edge_list[i].weight;
 			j++;
 		}
 	}
@@ -148,7 +151,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 
 	unsigned int *distance_cur, *distance_prev, *temp_distance, *device_warp_update_ds, *device_edge_counter;
 	graph_node *L;
-	graph_node *device_L_new;
+	graph_node *device_tpe;
 
 	int total_threads = blockSize * blockNum;
 	int warp_num;
@@ -166,20 +169,20 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 
 	cudaMalloc((void**)&device_warp_update_ds, sizeof(unsigned int)*warp_num);
 	cudaMalloc((void**)&L, sizeof(graph_node)*edge_counter);
-	cudaMalloc((void**)&device_L_new, sizeof(graph_node)*edge_counter);
+	cudaMalloc((void**)&device_tpe, sizeof(graph_node)*edge_counter);
 	cudaMalloc((void**)&distance_cur, sizeof(unsigned int)*graph->size());
 	cudaMalloc((void**)&distance_prev, sizeof(unsigned int)*graph->size());
 
 	cudaMemcpy(distance_cur, initDist, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
 	cudaMemcpy(distance_prev, initDist, sizeof(unsigned int)*graph->size(), cudaMemcpyHostToDevice);
 	cudaMemcpy(L, edge_list, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
-	cudaMemcpy(device_L_new, L_new, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
+	cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 	cudaMemcpy(device_edge_counter, &edge_counter, sizeof(uint), cudaMemcpyHostToDevice);
 
 	for (int i = 0; i < graph->size()-1; ++i) {
 		cudaMemset(device_warp_update_ds, 0, sizeof(uint)*warp_num);
 		cudaMemcpy(temp_distance, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
-		edge_process_opt<<<blockNum, blockSize>>>(device_L_new, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
+		edge_process_opt<<<blockNum, blockSize>>>(device_tpe, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
@@ -197,6 +200,16 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		}
 		thrust::exclusive_scan(nodeOffsets, nodeOffsets + queueCounter, nodeOffsets);
 		nodeOffsets[queueCounter] = nodeOffsets[queueCounter - 1] + neighborNumber[queueCounter - 1];
+		unsigned int *device_nodeOffsets = new unsigned int[queueCounter + 1];
+		cudaMemcpy(nodeOffsets, device_nodeOffsets, sizeof(uint)*(queueCounter + 1), cudaMemcpyDeviceToHost);
+
+		free(tpe);
+		cudaFree(device_tpe);
+		tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
+
+		//tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter);
+
 		break;
 	}
 
