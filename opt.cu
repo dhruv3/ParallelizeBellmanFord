@@ -114,7 +114,6 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 			else{
 				i++;
 				if(i >= queueCounter[0]){
-					printf("%d\n", i);
 					return;
 				}
 				startVertex = nodeQueue[i];
@@ -185,7 +184,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	}
   thrust::exclusive_scan(allOffsets, allOffsets + graph->size(), allOffsets);
   allOffsets[graph->size()] = allOffsets[graph->size() - 1] + allNeighborNumber[graph->size() - 1];
-	unsigned int *device_allOffsets = new unsigned int[graph->size() + 1];
+	unsigned int *device_allOffsets;
 	cudaMalloc((void**)&device_allOffsets, sizeof(unsigned int)*(graph->size()+1));
 	cudaMemcpy(device_allOffsets, allOffsets, sizeof(unsigned int)*(graph->size()+1), cudaMemcpyHostToDevice);
 
@@ -229,16 +228,19 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
 	for (int i = 0; i < graph->size()-1; ++i) {
+		setTime();
 		edge_process_opt<<<blockNum, blockSize>>>(device_tpe, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
+		compute_time += getTime();
 
 		if(queueCounter == 0){
 			break;
 		}
 
+		setTime();
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
 		for(int j = 0; j < queueCounter; j++){
@@ -266,10 +268,13 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter, device_edge_list);
 		cudaDeviceSynchronize();
 		cudaMemcpy(tpe, device_tpe, sizeof(graph_node)*edge_counter, cudaMemcpyDeviceToHost);
-		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 		cudaMemset(device_queueCounter, 0, sizeof(unsigned int));
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
+		filter_time += getTime();
 	}
+
+	std::cout << "Compute Time: " << compute_time << "\n";
+	std::cout << "Filter Time: " << filter_time;
 
 	cudaMemcpy(initDist, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 
@@ -286,12 +291,10 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	cudaFree(distance_cur);
 	cudaFree(distance_prev);
 	free(tpe);
-	//free(nodeQueue);
-	// free(allOffsets);
-	// free(initDist);
-	// cout<<"test";
-	// cudaFree(distance_cur);
-	// cudaFree(distance_prev);
-	// cudaFree(device_tpe);
-	// cudaFree(device_nodeQueue);
+	free(nodeQueue);
+	delete allOffsets;
+	cudaFree(device_tpe);
+	cudaFree(device_nodeQueue);
+	cudaFree(device_allOffsets);
+	cudaFree(device_queueCounter);
 }
