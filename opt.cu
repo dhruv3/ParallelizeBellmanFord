@@ -53,6 +53,7 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 	for(int i = beg; i < end; i+=32){
 		edge = L + i;
 		u = edge->src;
+		// printf("Edge %d\n", u);
 		v = edge->dst;
 		w = edge->weight;
 		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_prev[v] && distance_prev[u] + w < distance_cur[v]){
@@ -103,24 +104,35 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 	//int i = std::upper_bound(nodeOffsets, nodeOffsets + (queueCounter[0]+1), tid_begin) - nodeOffsets;
 
 	int startVertex = nodeQueue[i];
-	for(int j = tid_begin; j <= tid_end; j++){
-		int phi = j - nodeOffsets[i];
-		if(j < nodeOffsets[i+1]){
-			uint edgePos = allOffsets[startVertex] + phi;
-			tpe[j] = edge_list[edgePos];
-		}
-		else{
-			i++;
-			if(i >= queueCounter[0]){
-				printf("%d\n", i);
-				return;
+	if(startVertex != -1){
+		for(int j = tid_begin; j <= tid_end; j++){
+			int phi = j - nodeOffsets[i];
+			if(j < nodeOffsets[i+1]){
+				uint edgePos = allOffsets[startVertex] + phi;
+				//printf("j is %d\n", j);
+				//printf("edge_list[edgePos].dst is %d\n", edge_list[edgePos].dst);
+				tpe[j].src = edge_list[edgePos].src;
+				//printf("tpe[j].src is %d\n", tpe[j].src);
+				tpe[j].dst = edge_list[edgePos].dst;
+				tpe[j].weight = edge_list[edgePos].weight;
+				//printf("edgePos is %d\n", edgePos);
+				//printf("tpe is %d\n", tpe[j].src);
 			}
-			startVertex = nodeQueue[i];
-			phi = j - nodeOffsets[i];
-			uint edgePos = allOffsets[startVertex] + phi;
-			tpe[j] = edge_list[edgePos];
+			else{
+				i++;
+				if(i >= queueCounter[0]){
+					printf("%d\n", i);
+					return;
+				}
+				startVertex = nodeQueue[i];
+				phi = j - nodeOffsets[i];
+				uint edgePos = allOffsets[startVertex] + phi;
+				tpe[j].src = edge_list[edgePos].src;
+				tpe[j].dst = edge_list[edgePos].dst;
+				tpe[j].weight = edge_list[edgePos].weight;
+			}
+			phi++;
 		}
-		phi++;
 	}
 }
 
@@ -226,12 +238,14 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	for (int i = 0; i < graph->size()-1; ++i) {
 		edge_process_opt<<<blockNum, blockSize>>>(device_tpe, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
+		// if(i == 32)
+		// 	break;
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
+		printf("old %d\n",queueCounter);
+		int oldQC = queueCounter;
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
-
-		if(queueCounter == 0)
-			break;
+		printf("new %d\n",queueCounter);
 
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
@@ -252,12 +266,18 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 
 		free(tpe);
 		cudaFree(device_tpe);
-		tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+		graph_node *tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
+		graph_node *device_tpe;
+		cudaMalloc((void**)&device_tpe, sizeof(graph_node)*edge_counter);
 		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
 		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter, device_edge_list);
 		cudaDeviceSynchronize();
 		cudaMemcpy(tpe, device_tpe, sizeof(graph_node)*edge_counter, cudaMemcpyDeviceToHost);
+		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
+		if(oldQC == queueCounter)
+			break;
+		printf("----------------------\n");
 	}
 
 	cudaMemcpy(initDist, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
