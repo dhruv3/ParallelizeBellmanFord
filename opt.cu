@@ -1,6 +1,7 @@
 #include <vector>
 #include <iostream>
 #include <thrust/scan.h>
+#include <algorithm>
 #include "utils.h"
 #include "cuda_error_check.cuh"
 #include "initial_graph.hpp"
@@ -64,7 +65,7 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 	}
 }
 
-__global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned int *nodeOffsets, unsigned int *allOffsets, unsigned int *queueCounter){
+__global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned int *nodeOffsets, unsigned int *allOffsets, unsigned int *queueCounter, graph_node *edge_list){
 	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
 	int total_threads = blockDim.x * gridDim.x;
 	//listing 2
@@ -86,29 +87,41 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 	}
 	//listing 3
 	//test upper_bound: http://coliru.stacked-crooked.com/
-	// int i = std::upper_bound(nodeOffsets, nodeOffsets + (&queueCounter[0]+1), tid_begin) - nodeOffsets;
-	// if(i != 0){
-	// 	i = i-1;
-	// }
-	// int startVertex = nodeQueue[i];
-	// for(int j = tid_begin; j <= tid_end; j++){
-	// 	int phi = j - nodeOffsets[i];
-	// 	if(j < nodeOffsets[i+1]){
-	// 		graph_node *edge = allOffsets[startVertex] + phi;
-	// 		tpe+x = edge;
-	// 	}
-	// 	else{
-	// 		i++;
-	// 		if(i >= &queueCounter[0]){
-	// 			exit(EXIT_FAILURE);
-	// 		}
-	// 		startVertex = nodeQueue[i];
-	// 		phi = j - nodeOffsets[i];
-	// 		graph_node *edge = allOffsets[startVertex] + phi;
-	// 		tpe+x = edge;
-	// 	}
-	// 	phi++;
-	// }
+	int i = 0;
+	for(int t = 0; t < queueCounter[0]+1; t++){
+		if(nodeOffsets[t] > tid_begin){
+			if(t != 0){
+				i = t-1;
+			}
+			break;
+		}
+
+		if(t == queueCounter[0]){
+			i = t;
+		}
+	}
+	//int i = std::upper_bound(nodeOffsets, nodeOffsets + (queueCounter[0]+1), tid_begin) - nodeOffsets;
+
+	int startVertex = nodeQueue[i];
+	for(int j = tid_begin; j <= tid_end; j++){
+		int phi = j - nodeOffsets[i];
+		if(j < nodeOffsets[i+1]){
+			uint edgePos = allOffsets[startVertex] + phi;
+			tpe[j] = edge_list[edgePos];
+		}
+		else{
+			i++;
+			if(i >= queueCounter[0]){
+				printf("%d\n", i);
+				return;
+			}
+			startVertex = nodeQueue[i];
+			phi = j - nodeOffsets[i];
+			uint edgePos = allOffsets[startVertex] + phi;
+			tpe[j] = edge_list[edgePos];
+		}
+		phi++;
+	}
 }
 
 //device outcore method
@@ -217,6 +230,9 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
 
+		if(queueCounter == 0)
+			break;
+
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
 		for(int j = 0; j < queueCounter; j++){
@@ -239,9 +255,9 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
-		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter);
-
-		break;
+		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter, device_edge_list);
+		cudaDeviceSynchronize();
+		cudaMemcpy(tpe, device_tpe, sizeof(graph_node)*edge_counter, cudaMemcpyDeviceToHost);
 	}
 
 	cudaMemcpy(initDist, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
