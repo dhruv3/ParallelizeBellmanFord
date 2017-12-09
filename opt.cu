@@ -64,6 +64,53 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 	}
 }
 
+__global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned int *nodeOffsets, unsigned int *allOffsets, unsigned int *queueCounter){
+	int thread_id = blockDim.x * blockIdx.x + threadIdx.x;
+	int total_threads = blockDim.x * gridDim.x;
+	//listing 2
+	int total_edges =  nodeOffsets[queueCounter[0]];
+	int loadPerThread;
+	if(total_edges % total_threads == 0){
+		loadPerThread = nodeOffsets[queueCounter[0]] / total_threads;
+	}
+	else{
+		loadPerThread = nodeOffsets[queueCounter[0]] / total_threads + 1;
+	}
+	unsigned int tid_begin = thread_id * loadPerThread;
+	unsigned int tid_end;
+	if(((thread_id + 1)*loadPerThread - 1) > (nodeOffsets[queueCounter[0]] - 1)){
+		tid_end = nodeOffsets[queueCounter[0]] - 1;
+	}
+	else{
+		tid_end = (thread_id + 1)*loadPerThread - 1;
+	}
+	//listing 3
+	//test upper_bound: http://coliru.stacked-crooked.com/
+	// int i = std::upper_bound(nodeOffsets, nodeOffsets + (&queueCounter[0]+1), tid_begin) - nodeOffsets;
+	// if(i != 0){
+	// 	i = i-1;
+	// }
+	// int startVertex = nodeQueue[i];
+	// for(int j = tid_begin; j <= tid_end; j++){
+	// 	int phi = j - nodeOffsets[i];
+	// 	if(j < nodeOffsets[i+1]){
+	// 		graph_node *edge = allOffsets[startVertex] + phi;
+	// 		tpe+x = edge;
+	// 	}
+	// 	else{
+	// 		i++;
+	// 		if(i >= &queueCounter[0]){
+	// 			exit(EXIT_FAILURE);
+	// 		}
+	// 		startVertex = nodeQueue[i];
+	// 		phi = j - nodeOffsets[i];
+	// 		graph_node *edge = allOffsets[startVertex] + phi;
+	// 		tpe+x = edge;
+	// 	}
+	// 	phi++;
+	// }
+}
+
 //device outcore method
 void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, int blockNum, ofstream &outputFile){
 	double filter_time = 0;
@@ -96,6 +143,9 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	//sort by source vertex
 	//http://www.cplusplus.com/reference/cstdlib/qsort/
 	qsort(edge_list, edge_counter, sizeof(graph_node), cmp_edge_src);
+	graph_node *device_edge_list;
+	cudaMalloc((void**)&device_edge_list, sizeof(graph_node)*edge_counter);
+	cudaMemcpy(device_edge_list, edge_list, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
 	//create allneighbor
 	unsigned int *allNeighborNumber = new unsigned int[graph->size()];
@@ -166,6 +216,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
+
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
 		for(int j = 0; j < queueCounter; j++){
@@ -180,14 +231,15 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		thrust::exclusive_scan(nodeOffsets, nodeOffsets + queueCounter, nodeOffsets);
 		nodeOffsets[queueCounter] = nodeOffsets[queueCounter - 1] + neighborNumber[queueCounter - 1];
 		unsigned int *device_nodeOffsets = new unsigned int[queueCounter + 1];
-		cudaMemcpy(nodeOffsets, device_nodeOffsets, sizeof(uint)*(queueCounter + 1), cudaMemcpyDeviceToHost);
+		cudaMalloc((void**)&device_nodeOffsets, sizeof(uint)*(queueCounter + 1));
+		cudaMemcpy(device_nodeOffsets, nodeOffsets, sizeof(uint)*(queueCounter + 1), cudaMemcpyHostToDevice);
 
 		free(tpe);
 		cudaFree(device_tpe);
 		tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
-		//tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter);
+		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter);
 
 		break;
 	}
@@ -202,7 +254,17 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		    outputFile << i << ":" << initDist[i] << endl;
 		}
 	}
+	//http://www.geeksforgeeks.org/g-fact-30/
 	free(initDist);
 	cudaFree(distance_cur);
 	cudaFree(distance_prev);
+	free(tpe);
+	//free(nodeQueue);
+	// free(allOffsets);
+	// free(initDist);
+	// cout<<"test";
+	// cudaFree(distance_cur);
+	// cudaFree(distance_prev);
+	// cudaFree(device_tpe);
+	// cudaFree(device_nodeQueue);
 }
