@@ -49,11 +49,9 @@ __global__ void edge_process_opt(graph_node *L, const uint edge_counter, unsigne
 
 	unsigned int u, v, w;
 	graph_node *edge;
-	//printf("Hello thread %d\n", threadIdx.x);
 	for(int i = beg; i < end; i+=32){
 		edge = L + i;
 		u = edge->src;
-		// printf("Edge %d\n", u);
 		v = edge->dst;
 		w = edge->weight;
 		if(distance_prev[u] != UINT_MAX && distance_prev[u] + w < distance_prev[v] && distance_prev[u] + w < distance_cur[v]){
@@ -87,7 +85,6 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 		tid_end = (thread_id + 1)*loadPerThread - 1;
 	}
 	//listing 3
-	//test upper_bound: http://coliru.stacked-crooked.com/
 	int i = 0;
 	for(int t = 0; t < queueCounter[0]+1; t++){
 		if(nodeOffsets[t] > tid_begin){
@@ -101,7 +98,6 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 			i = t;
 		}
 	}
-	//int i = std::upper_bound(nodeOffsets, nodeOffsets + (queueCounter[0]+1), tid_begin) - nodeOffsets;
 
 	int startVertex = nodeQueue[i];
 	if(startVertex != -1){
@@ -109,14 +105,9 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 			int phi = j - nodeOffsets[i];
 			if(j < nodeOffsets[i+1]){
 				uint edgePos = allOffsets[startVertex] + phi;
-				//printf("j is %d\n", j);
-				//printf("edge_list[edgePos].dst is %d\n", edge_list[edgePos].dst);
 				tpe[j].src = edge_list[edgePos].src;
-				//printf("tpe[j].src is %d\n", tpe[j].src);
 				tpe[j].dst = edge_list[edgePos].dst;
 				tpe[j].weight = edge_list[edgePos].weight;
-				//printf("edgePos is %d\n", edgePos);
-				//printf("tpe is %d\n", tpe[j].src);
 			}
 			else{
 				i++;
@@ -238,15 +229,13 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 	for (int i = 0; i < graph->size()-1; ++i) {
 		edge_process_opt<<<blockNum, blockSize>>>(device_tpe, initial_edge_counter, distance_cur, distance_prev, device_queueCounter, device_nodeQueue);
 		cudaDeviceSynchronize();
-		// if(i == 32)
-		// 	break;
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
-		printf("old %d\n",queueCounter);
-		int oldQC = queueCounter;
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
 		printf("new %d\n",queueCounter);
-
+		if(queueCounter == 0){
+			break;
+		}
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
 		for(int j = 0; j < queueCounter; j++){
@@ -275,9 +264,8 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		cudaDeviceSynchronize();
 		cudaMemcpy(tpe, device_tpe, sizeof(graph_node)*edge_counter, cudaMemcpyDeviceToHost);
 		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
-		if(oldQC == queueCounter)
-			break;
-		printf("----------------------\n");
+		cudaMemset(device_queueCounter, 0, sizeof(unsigned int));
+		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
 	}
 
 	cudaMemcpy(initDist, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
