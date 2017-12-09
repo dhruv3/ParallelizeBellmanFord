@@ -86,17 +86,19 @@ __global__ void tpe_update(graph_node *tpe, unsigned int *nodeQueue, unsigned in
 	}
 	//listing 3
 	int i = 0;
-	for(int t = 0; t < queueCounter[0]+1; t++){
-		if(nodeOffsets[t] > tid_begin){
-			if(t != 0){
-				i = t-1;
-			}
-			break;
-		}
-
-		if(t == queueCounter[0]){
-			i = t;
-		}
+	int target = tid_begin;
+  int low = 0, high = queueCounter[0]+1;
+  while (low != high) {
+      int mid = (low + high) / 2;
+      if (nodeOffsets[mid] <= target) {
+          low = mid + 1;
+      }
+      else {
+          high = mid;
+      }
+  }
+	if(low != 0){
+		i = low - 1;
 	}
 
 	int startVertex = nodeQueue[i];
@@ -232,10 +234,11 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		cudaMemcpy(distance_prev, distance_cur, sizeof(uint)*graph->size(), cudaMemcpyDeviceToDevice);
 		cudaMemcpy(nodeQueue, device_nodeQueue, sizeof(uint)*graph->size(), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
-		printf("new %d\n",queueCounter);
+
 		if(queueCounter == 0){
 			break;
 		}
+
 		//create neighborNumber
 		unsigned int *neighborNumber = new unsigned int[queueCounter];
 		for(int j = 0; j < queueCounter; j++){
