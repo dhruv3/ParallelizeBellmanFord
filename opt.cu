@@ -247,6 +247,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 			int idx = nodeQueue[j];
 			neighborNumber[j] = allNeighborNumber[idx];
 		}
+
 		//create nodeOffset
 		unsigned int *nodeOffsets = new unsigned int[queueCounter + 1];
 		for(int i = 0; i < queueCounter; i++){
@@ -263,13 +264,12 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		graph_node *tpe = (graph_node*) malloc(sizeof(graph_node)*edge_counter);
 		graph_node *device_tpe;
 		cudaMalloc((void**)&device_tpe, sizeof(graph_node)*edge_counter);
-		cudaMemcpy(device_tpe, tpe, sizeof(graph_node)*edge_counter, cudaMemcpyHostToDevice);
 
 		tpe_update<<<blockNum, blockSize>>>(device_tpe, device_nodeQueue, device_nodeOffsets, device_allOffsets, device_queueCounter, device_edge_list);
 		cudaDeviceSynchronize();
 		cudaMemcpy(tpe, device_tpe, sizeof(graph_node)*edge_counter, cudaMemcpyDeviceToHost);
 		cudaMemset(device_queueCounter, 0, sizeof(unsigned int));
-		cudaMemcpy(&queueCounter, device_queueCounter, sizeof(uint), cudaMemcpyDeviceToHost);
+		queueCounter = 0;
 		filter_time += getTime();
 	}
 
