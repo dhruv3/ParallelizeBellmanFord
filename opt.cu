@@ -255,7 +255,7 @@ void puller_outcore_impl3(std::vector<initial_vertex> * graph, int blockSize, in
 		}
 		thrust::exclusive_scan(nodeOffsets, nodeOffsets + queueCounter, nodeOffsets);
 		nodeOffsets[queueCounter] = nodeOffsets[queueCounter - 1] + neighborNumber[queueCounter - 1];
-		unsigned int *device_nodeOffsets = new unsigned int[queueCounter + 1];
+		unsigned int *device_nodeOffsets;
 		cudaMalloc((void**)&device_nodeOffsets, sizeof(uint)*(queueCounter + 1));
 		cudaMemcpy(device_nodeOffsets, nodeOffsets, sizeof(uint)*(queueCounter + 1), cudaMemcpyHostToDevice);
 
