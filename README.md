@@ -10,9 +10,15 @@ To run the code do the following steps:
 
 Variables:
 ama.txt is the name of valid graph file. It is expected to be the same folder.
+
 bsize is the block size
+
 bcount represents the block number
+
 output.txt is the txt file generated that contains the final answer
+
 opt represents the optimized method.
+
 usesmem should be set to no.
+
 sync should be set to outcore.
