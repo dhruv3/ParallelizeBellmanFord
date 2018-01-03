@@ -1,4 +1,4 @@
-# Parallelize Bellman Ford
+# Parallelize SSSP
 
 Three algorithms have been implemented and they can run in different configurations. Parameters and values required to run them have been explained in next paragraph. Additionally, you can refer [Report 1](https://github.com/dhruv3/ParallelizeBellmanFord/blob/master/sssp_report.pdf) and [Report 2](https://github.com/dhruv3/ParallelizeBellmanFord/blob/master/sssp_opt_report.pdf) to see the detailed analysis done on the three algorithms.
 To run the code do the following steps:
